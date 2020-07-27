@@ -31,42 +31,46 @@ Create and destroy a Vulkan surface on an SDL window.
 #define VK_USE_PLATFORM_WIN32_KHR
 #endif
 
-// Tell SDL not to mess with main()
-#define SDL_MAIN_HANDLED
-
 #include <glm/glm.hpp>
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_syswm.h>
-#include <SDL2/SDL_vulkan.h>
 #include <vulkan/vulkan.hpp>
+#include <GLFW/glfw3.h>
 
 #include <iostream>
 #include <vector>
 
+const uint32_t WIDTH = 1280;
+const uint32_t HEIGHT = 720;
+
 int main()
 {
-    // Create an SDL window that supports Vulkan rendering.
-    if(SDL_Init(SDL_INIT_VIDEO) != 0) {
-        std::cout << "Could not initialize SDL." << std::endl;
-        return 1;
-    }
-    SDL_Window* window = SDL_CreateWindow("Vulkan Window", SDL_WINDOWPOS_CENTERED,
-        SDL_WINDOWPOS_CENTERED, 1280, 720, SDL_WINDOW_VULKAN);
-    if(window == NULL) {
-        std::cout << "Could not create SDL window." << std::endl;
+    // Create an GLFW window that supports Vulkan rendering.
+    if(!glfwInit()) {
+        std::cout << "Could not initialize GLFW." << std::endl;
         return 1;
     }
 
-    // Get WSI extensions from SDL (we can add more if we like - we just can't remove these)
-    unsigned extension_count;
-    if(!SDL_Vulkan_GetInstanceExtensions(window, &extension_count, NULL)) {
-        std::cout << "Could not get the number of required instance extensions from SDL." << std::endl;
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    
+    GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan Window", nullptr, nullptr);
+    if(window == NULL) {
+        std::cout << "Could not create GLFW window." << std::endl;
         return 1;
     }
-    std::vector<const char*> extensions(extension_count);
-    if(!SDL_Vulkan_GetInstanceExtensions(window, &extension_count, extensions.data())) {
-        std::cout << "Could not get the names of required instance extensions from SDL." << std::endl;
-        return 1;
+
+    uint32_t layer_count = 0;
+    vkEnumerateInstanceLayerProperties(&layer_count, nullptr);
+    std::vector<VkLayerProperties> availableLayers(layer_count);
+    vkEnumerateInstanceLayerProperties(&layer_count, availableLayers.data());
+
+    uint32_t extension_count = 0;
+    std::vector<VkExtensionProperties> extensions(extension_count);
+    vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, extensions.data());
+    
+    std::cout << extension_count << " extensions supported\n";
+    std::cout << "available extensions:\n";
+    for (const auto& extension : extensions) {
+        std::cout << '\t' << extension.extensionName << '\n';
     }
 
     // Use validation layers if this is a debug build
@@ -86,11 +90,13 @@ int main()
 
     // vk::InstanceCreateInfo is where the programmer specifies the layers and/or extensions that
     // are needed.
+    uint32_t glfwExtensionCount = 0;
+    const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
     vk::InstanceCreateInfo instInfo = vk::InstanceCreateInfo()
         .setFlags(vk::InstanceCreateFlags())
         .setPApplicationInfo(&appInfo)
-        .setEnabledExtensionCount(static_cast<uint32_t>(extensions.size()))
-        .setPpEnabledExtensionNames(extensions.data())
+        .setEnabledExtensionCount(glfwExtensionCount)
+        .setPpEnabledExtensionNames(glfwExtensions)
         .setEnabledLayerCount(static_cast<uint32_t>(layers.size()))
         .setPpEnabledLayerNames(layers.data());
 
@@ -105,7 +111,7 @@ int main()
 
     // Create a Vulkan surface for rendering
     VkSurfaceKHR c_surface;
-    if(!SDL_Vulkan_CreateSurface(window, static_cast<VkInstance>(instance), &c_surface)) {
+    if (glfwCreateWindowSurface(instance, window, nullptr, &c_surface) != VK_SUCCESS) {
         std::cout << "Could not create a Vulkan surface." << std::endl;
         return 1;
     }
@@ -114,31 +120,14 @@ int main()
     // This is where most initializtion for a program should be performed
 
     // Poll for user input.
-    bool stillRunning = true;
-    while(stillRunning) {
-
-        SDL_Event event;
-        while(SDL_PollEvent(&event)) {
-
-            switch(event.type) {
-
-            case SDL_QUIT:
-                stillRunning = false;
-                break;
-
-            default:
-                // Do nothing.
-                break;
-            }
-        }
-
-        SDL_Delay(10);
+    while(!glfwWindowShouldClose(window)) {
+        glfwPollEvents();
     }
 
     // Clean up.
     instance.destroySurfaceKHR(surface);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
+    glfwDestroyWindow(window);
+    glfwTerminate();
     instance.destroy();
 
     return 0;
