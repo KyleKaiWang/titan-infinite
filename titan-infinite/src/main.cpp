@@ -21,6 +21,7 @@ const bool enableValidationLayers = false;
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/euler_angles.hpp>
@@ -38,6 +39,9 @@ const bool enableValidationLayers = false;
 
 const uint32_t WIDTH = 1280;
 const uint32_t HEIGHT = 720;
+
+const std::string MODEL_PATH = "data/models/dragon.obj";
+const std::string TEXTURE_PATH = "data/textures/viking_room.png";
 
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
@@ -62,6 +66,7 @@ struct UniformBufferObject {
     alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 proj;
+    alignas(16) glm::mat4 sceneRotationMatrix;
 };
 
 struct Vertex {
@@ -116,6 +121,15 @@ const std::vector<uint16_t> indices = {
     0, 1, 2, 2, 3, 0,
     4, 5, 6, 6, 7, 4
 };
+
+
+//Camera Settings
+const int DisplaySamples = 16;
+const float ViewDistance = 5.0f;
+const float ViewFOV = 45.0f;
+const float OrbitSpeed = 1.0f;
+const float ZoomSpeed = 1.0f;
+
 
 class Application {
 public:
@@ -183,6 +197,96 @@ private:
 
     VkDebugUtilsMessengerEXT debugMessenger;
 
+    double m_prevCursorX = 0.0;
+    double m_prevCursorY = 0.0;
+
+    static void mousePositionCallback(GLFWwindow* window, double xpos, double ypos) {
+        Application* self = reinterpret_cast<Application*>(glfwGetWindowUserPointer(window));
+        if (self->m_mode != InputMode::None) {
+            const double dx = xpos - self->m_prevCursorX;
+            const double dy = ypos - self->m_prevCursorY;
+
+            switch (self->m_mode) {
+            case InputMode::RotatingScene:
+                self->m_sceneSettings.yaw += OrbitSpeed * float(dx);
+                self->m_sceneSettings.pitch += OrbitSpeed * float(dy);
+                break;
+            case InputMode::RotatingCamera:
+                self->m_camera.yaw += OrbitSpeed * float(dx);
+                self->m_camera.pitch += OrbitSpeed * float(dy);
+                break;
+            }
+
+            self->m_prevCursorX = xpos;
+            self->m_prevCursorY = ypos;
+        }
+    }
+    static void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
+        Application* self = reinterpret_cast<Application*>(glfwGetWindowUserPointer(window));
+
+        const InputMode oldMode = self->m_mode;
+        if (action == GLFW_PRESS && self->m_mode == InputMode::None) {
+            switch (button) {
+            case GLFW_MOUSE_BUTTON_1:
+                self->m_mode = InputMode::RotatingCamera;
+                break;
+            case GLFW_MOUSE_BUTTON_2:
+                self->m_mode = InputMode::RotatingScene;
+                break;
+            }
+        }
+        if (action == GLFW_RELEASE && (button == GLFW_MOUSE_BUTTON_1 || button == GLFW_MOUSE_BUTTON_2)) {
+            self->m_mode = InputMode::None;
+        }
+
+        if (oldMode != self->m_mode) {
+            if (self->m_mode == InputMode::None) {
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            }
+            else {
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                glfwGetCursorPos(window, &self->m_prevCursorX, &self->m_prevCursorY);
+            }
+        }
+    }
+
+    static void mouseScrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
+        Application* self = reinterpret_cast<Application*>(glfwGetWindowUserPointer(window));
+        self->m_camera.distance += ZoomSpeed * float(-yoffset);
+        if (self->m_camera.distance < 0.0f)
+            self->m_camera.distance = 0.0f;
+    }
+
+    static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+        Application* self = reinterpret_cast<Application*>(glfwGetWindowUserPointer(window));
+    }
+
+    struct Camera
+    {
+        float pitch = 0.0f;
+        float yaw = 0.0f;
+        float distance = 5.0;
+        float fov = 45.0;
+    };
+
+    struct SceneSettings
+    {
+        float pitch = 0.0f;
+        float yaw = 0.0f;
+    };
+
+    Camera m_camera;
+    SceneSettings m_sceneSettings;
+
+    enum class InputMode
+    {
+        None,
+        RotatingCamera,
+        RotatingScene,
+    };
+
+    InputMode m_mode = InputMode::None;
+
     // Use validation layers if this is a debug build
     std::vector<const char*> validationLayers;
     const std::vector<const char*> deviceExtensions = {
@@ -206,6 +310,13 @@ private:
         }
         glfwSetWindowUserPointer(m_window, this);
         glfwSetFramebufferSizeCallback(m_window, framebufferResizeCallback);
+        glfwSetCursorPosCallback(m_window, Application::mousePositionCallback);
+        glfwSetMouseButtonCallback(m_window, Application::mouseButtonCallback);
+        glfwSetScrollCallback(m_window, Application::mouseScrollCallback);
+        glfwSetKeyCallback(m_window, Application::keyCallback);
+
+        m_camera.distance = ViewDistance;
+        m_camera.fov = ViewFOV;
     }
 
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
@@ -298,11 +409,18 @@ private:
         float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
         UniformBufferObject ubo{};
-        ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        ubo.proj = glm::perspective(glm::radians(45.0f), m_swapChainExtent.width / (float)m_swapChainExtent.height, 0.1f, 10.0f);
-        ubo.proj[1][1] *= -1;
+        ubo.model = glm::mat4(1.0f);
 
+        glm::mat4 sceneRotationMatrix = glm::mat4(1.0f);
+        sceneRotationMatrix = glm::rotate(sceneRotationMatrix, glm::radians(m_sceneSettings.pitch), glm::vec3(1.0f, 0.0f, 0.0f));
+        sceneRotationMatrix = glm::rotate(sceneRotationMatrix, glm::radians(m_sceneSettings.yaw), glm::vec3(0.0f, 1.0f, 0.0f));
+        sceneRotationMatrix = glm::rotate(sceneRotationMatrix, glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+
+        ubo.view = glm::lookAt(glm::vec3(0.0f, 0.0f, m_camera.distance), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        ubo.proj = glm::perspective(m_camera.fov, m_swapChainExtent.width / (float)m_swapChainExtent.height, 0.1f, 10.0f);
+        ubo.proj[1][1] *= -1;
+        ubo.sceneRotationMatrix = sceneRotationMatrix;
+        
         void* data;
         vkMapMemory(m_device, m_uniformBuffersMemory[currentImage], 0, sizeof(ubo), 0, &data);
         memcpy(data, &ubo, sizeof(ubo));
