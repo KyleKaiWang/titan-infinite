@@ -48,8 +48,9 @@ public:
         allocInfo.commandBufferCount = commandBufferCount;
 
         std::vector<VkCommandBuffer> commandBuffers(commandBufferCount);
-        vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data());
-
+        if (vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate command buffers!");
+        }
         return std::move(commandBuffers);
     }
 
