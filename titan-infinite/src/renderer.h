@@ -241,7 +241,7 @@ public:
         if (vkCreateBuffer(device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
             throw std::runtime_error("failed to create buffer!");
         }
-        return std::move(buffer);
+        return buffer;
     }
 
     VkSampler createTextureSampler(const VkDevice& device,
