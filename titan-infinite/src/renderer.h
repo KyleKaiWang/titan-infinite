@@ -227,55 +227,6 @@ public:
         return std::move(framebuffer);
     }
 
-    VkBuffer createBuffer(const VkDevice& device,
-                      VkDeviceSize size, 
-                      VkBufferUsageFlags usage, 
-                      VkSharingMode sharingMode) {
-        VkBufferCreateInfo bufferInfo{};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.size = size;
-        bufferInfo.usage = usage;
-        bufferInfo.sharingMode = sharingMode;
-
-        VkBuffer buffer;
-        if (vkCreateBuffer(device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create buffer!");
-        }
-        return buffer;
-    }
-
-    VkSampler createTextureSampler(const VkDevice& device,
-                              VkFilter magFilter, VkFilter minFilter, VkSamplerMipmapMode mipmapMode,
-                              VkSamplerAddressMode addressModeU, VkSamplerAddressMode addressModeV,
-                              VkSamplerAddressMode addressModeW, float mipLodBias,
-                              VkBool32 anisotropyEnable, float maxAnisotropy, VkBool32 compareEnable,
-                              VkCompareOp compareOp, float minLod, float maxLod,
-                              VkBorderColor borderColor, VkBool32 unnormalizedCoordinates) {
-        VkSamplerCreateInfo samplerInfo{};
-        samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        samplerInfo.magFilter = magFilter;
-        samplerInfo.minFilter = minFilter;
-        samplerInfo.mipmapMode = mipmapMode;
-        samplerInfo.addressModeU = addressModeU;
-        samplerInfo.addressModeV = addressModeV;
-        samplerInfo.addressModeW = addressModeW;
-        samplerInfo.mipLodBias = mipLodBias;
-        samplerInfo.anisotropyEnable = anisotropyEnable;
-        samplerInfo.maxAnisotropy = maxAnisotropy;
-        samplerInfo.borderColor = borderColor;
-        samplerInfo.unnormalizedCoordinates = unnormalizedCoordinates;
-        samplerInfo.compareEnable = compareEnable;
-        samplerInfo.compareOp = compareOp;
-        samplerInfo.minLod = minLod;
-        samplerInfo.maxLod = maxLod;
-
-        VkSampler sampler;
-        if (vkCreateSampler(device, &samplerInfo, nullptr, &sampler) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create texture sampler!");
-        }
-        return sampler;
-    }
-
     std::vector<ShaderStage> createShader(Device device, const std::string& vertexShaderFile, const std::string& pixelShaderFile) {
         ShaderStage vertShaderStage{};
         vertShaderStage.stage = VK_SHADER_STAGE_VERTEX_BIT;
