@@ -44,6 +44,7 @@ public:
     VkQueue m_presentQueue;
 
     VkDebugUtilsMessengerEXT debugMessenger;
+    VkPhysicalDeviceMemoryProperties m_memoryProperties;
 
     VkDevice getDevice() const { return m_device; }
     VkPhysicalDevice getPhysicalDevice() const { return m_physicalDevice; }
@@ -62,7 +63,7 @@ public:
 
     void destroy() {
         if (enableValidationLayers) {
-            DestroyDebugUtilsMessengerEXT(m_instance, debugMessenger, nullptr);
+            vkHelper::DestroyDebugUtilsMessengerEXT(m_instance, debugMessenger, nullptr);
         }
         vkDestroyDevice(m_device, nullptr);
         vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
@@ -124,7 +125,7 @@ public:
         VkDebugUtilsMessengerCreateInfoEXT createInfo;
         populateDebugMessengerCreateInfo(createInfo);
 
-        if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS) {
+        if (vkHelper::CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS) {
             throw std::runtime_error("failed to set up debug messenger!");
         }
     }
@@ -173,6 +174,8 @@ public:
         if (m_physicalDevice == VK_NULL_HANDLE) {
             throw std::runtime_error("failed to find a suitable GPU!");
         }
+
+        vkGetPhysicalDeviceMemoryProperties(m_physicalDevice, &m_memoryProperties);
     }
 
     
@@ -219,7 +222,7 @@ public:
     }
 
     void createLogicalDevice(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface) {
-        QueueFamilyIndices indices = findQueueFamilies(physicalDevice, surface);
+        QueueFamilyIndices indices = vkHelper::findQueueFamilies(physicalDevice, surface);
 
         std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
         std::set<uint32_t> uniqueQueueFamilies = { indices.graphicsFamily.value(), indices.presentFamily.value() };
@@ -265,15 +268,19 @@ public:
     }
 
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
-        VkPhysicalDeviceMemoryProperties memProperties;
-        vkGetPhysicalDeviceMemoryProperties(m_physicalDevice, &memProperties);
-
-        for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
-            if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+        for (uint32_t i = 0; i < m_memoryProperties.memoryTypeCount; ++i) {
+            if ((typeFilter & (1 << i)) && (m_memoryProperties.memoryTypes[i].propertyFlags & properties) == properties) {
                 return i;
             }
         }
 
         throw std::runtime_error("failed to find suitable memory type!");
+    }
+
+    bool memoryTypeNeedsStaging(uint32_t memoryTypeIndex) const
+    {
+        assert(memoryTypeIndex < m_memoryProperties.memoryTypeCount);
+        const VkMemoryPropertyFlags flags = m_memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags;
+        return (flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) == 0;
     }
 };

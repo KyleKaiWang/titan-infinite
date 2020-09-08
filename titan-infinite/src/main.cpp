@@ -37,7 +37,10 @@
 #include "camera.h"
 #include "window.h"
 #include "renderer.h"
+#include "buffer.h"
+#include "texture.h"
 #include "descriptor_pool.h"
+#include "mesh.h"
 
 struct UniformBufferObject {
     alignas(16) glm::mat4 model;
@@ -161,12 +164,12 @@ private:
 
         // CommandPool
         m_command.create(m_device.getDevice());
-        m_command.createCommandPool(m_device.getDevice(), findQueueFamilies(m_device.getPhysicalDevice(), m_device.getSurface()).graphicsFamily.value());
+        m_command.createCommandPool(m_device.getDevice(), vkHelper::findQueueFamilies(m_device.getPhysicalDevice(), m_device.getSurface()).graphicsFamily.value());
         m_command.m_commandBuffers = m_command.allocate(m_device.getDevice(), m_command.getCommandPool(), VK_COMMAND_BUFFER_LEVEL_PRIMARY, (uint32_t)m_swapChain.getSwapChainimages().size());
         
         // Depthbuffer
         {
-            auto depthFormat = findDepthFormat(m_device.getPhysicalDevice());
+            auto depthFormat = vkHelper::findDepthFormat(m_device.getPhysicalDevice());
             m_depthImage = m_renderer.createImage(m_device.getDevice(), 0, VK_IMAGE_TYPE_2D, depthFormat, { WIDTH, HEIGHT, 1 }, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED);
             
             VkMemoryRequirements memRequirements = memory::getMemoryRequirements(m_device.getDevice(), m_depthImage);
@@ -193,7 +196,7 @@ private:
             colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
             VkAttachmentDescription depthAttachment{};
-            depthAttachment.format = findDepthFormat(m_device.getPhysicalDevice());
+            depthAttachment.format = vkHelper::findDepthFormat(m_device.getPhysicalDevice());
             depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
             depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
             depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -247,7 +250,7 @@ private:
             m_uniformBuffersMemory.resize(m_swapChain.getSwapChainimages().size());
 
             for (size_t i = 0; i < m_swapChain.getSwapChainimages().size(); ++i) {
-                m_uniformBuffers[i] = m_renderer.createBuffer(m_device.getDevice(), bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE);
+                m_uniformBuffers[i] = buffer::createBuffer(m_device.getDevice(), bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE);
 
                 VkMemoryRequirements memReqs;
                 vkGetBufferMemoryRequirements(m_device.getDevice(), m_uniformBuffers[i], &memReqs);
@@ -267,7 +270,7 @@ private:
         // Vertexbuffer
         {
             VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
-            m_vertexBuffer = m_renderer.createBuffer(m_device.getDevice(), bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE);
+            m_vertexBuffer = buffer::createBuffer(m_device.getDevice(), bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE);
            
             VkMemoryRequirements memReqs;
             vkGetBufferMemoryRequirements(m_device.getDevice(), m_vertexBuffer, &memReqs);
@@ -293,7 +296,7 @@ private:
         // Indexbuffer
         {
             VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
-            m_indexBuffer =  m_renderer.createBuffer(m_device.getDevice(), bufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE);
+            m_indexBuffer = buffer::createBuffer(m_device.getDevice(), bufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE);
 
             VkMemoryRequirements memReqs;
             vkGetBufferMemoryRequirements(m_device.getDevice(), m_indexBuffer, &memReqs);
@@ -324,7 +327,7 @@ private:
             if (!pixels) {
                 throw std::runtime_error("failed to load texture image!");
             }
-            VkBuffer stagingBuffer =  m_renderer.createBuffer(m_device.getDevice(), imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_EXCLUSIVE);
+            VkBuffer stagingBuffer =  buffer::createBuffer(m_device.getDevice(), imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_EXCLUSIVE);
             VkDeviceMemory stagingBufferMemory;
 
             VkMemoryRequirements memReqs;
@@ -387,7 +390,7 @@ private:
                 { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY }, 
                 { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
 
-            m_textureSampler = m_renderer.createTextureSampler(m_device.getDevice(),
+            m_textureSampler = texture::createTextureSampler(m_device.getDevice(),
                 VK_FILTER_LINEAR,
                 VK_FILTER_LINEAR,
                 VK_SAMPLER_MIPMAP_MODE_LINEAR,
@@ -475,10 +478,10 @@ private:
             inputAssembly.primitiveRestartEnable = VK_FALSE;
 
             ViewportState viewport{};
-            viewport.topX = 0.0f;
-            viewport.topY = 0.0f;
-            viewport.width = (float)m_swapChain.getSwapChainExtent().width;
-            viewport.height = (float)m_swapChain.getSwapChainExtent().height;
+            viewport.topX = 0;
+            viewport.topY = 0;
+            viewport.width = m_swapChain.getSwapChainExtent().width;
+            viewport.height = m_swapChain.getSwapChainExtent().height;
 
             RasterizationState rasterizer{};
             rasterizer.depthClampEnable = VK_FALSE;
@@ -809,6 +812,102 @@ private:
                 throw std::runtime_error("failed to record command buffer!");
             }
         }
+    }
+
+    MeshBuffer createMeshBuffer(Device& device, const std::shared_ptr<Mesh>& mesh)
+    {
+        assert(mesh);
+
+        MeshBuffer meshBuffer;
+        meshBuffer.numElements = static_cast<uint32_t>(mesh->faces().size() * 3);
+
+        const size_t vertexDataSize = mesh->vertices().size() * sizeof(Mesh::Vertex);
+        const size_t indexDataSize = mesh->faces().size() * sizeof(Mesh::Face);
+
+        meshBuffer.vertexBuffer = buffer::createBuffer(device, vertexDataSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        meshBuffer.indexBuffer = buffer::createBuffer(device, indexDataSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+        bool usingStagingForVertexBuffer = false;
+        bool usingStagingForIndexBuffer = false;
+
+        Resource<VkBuffer> stagingVertexBuffer = meshBuffer.vertexBuffer;
+        if (device.memoryTypeNeedsStaging(meshBuffer.vertexBuffer.memoryTypeIndex)) {
+            stagingVertexBuffer = buffer::createBuffer(device, meshBuffer.vertexBuffer.allocationSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+            usingStagingForVertexBuffer = true;
+        }
+
+        Resource<VkBuffer> stagingIndexBuffer = meshBuffer.indexBuffer;
+        if (device.memoryTypeNeedsStaging(meshBuffer.indexBuffer.memoryTypeIndex)) {
+            stagingIndexBuffer = buffer::createBuffer(device, meshBuffer.indexBuffer.allocationSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+            usingStagingForIndexBuffer = true;
+        }
+
+        //copyToDevice(stagingVertexBuffer.memory, mesh->vertices().data(), vertexDataSize);
+        {
+            void* mappedMemory;
+            memory::map(device.getDevice(), stagingVertexBuffer.memory, 0, vertexDataSize, &mappedMemory);
+            std::memcpy(stagingVertexBuffer.memory, mesh->vertices().data(), vertexDataSize);
+
+            const VkMappedMemoryRange flushRange = {
+                VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+                nullptr,
+                stagingVertexBuffer.memory,
+                0,
+                VK_WHOLE_SIZE
+            };
+            vkFlushMappedMemoryRanges(device.getDevice(), 1, &flushRange);
+            memory::unmap(device.getDevice(), stagingVertexBuffer.memory);
+        }
+
+        //copyToDevice(stagingIndexBuffer.memory, mesh->faces().data(), indexDataSize);
+        {
+            void* mappedMemory;
+            memory::map(device.getDevice(), stagingIndexBuffer.memory, 0, indexDataSize, &mappedMemory);
+            std::memcpy(stagingIndexBuffer.memory, mesh->faces().data(), indexDataSize);
+
+            const VkMappedMemoryRange flushRange = {
+                VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+                nullptr,
+                stagingIndexBuffer.memory,
+                0,
+                VK_WHOLE_SIZE
+            };
+            vkFlushMappedMemoryRanges(device.getDevice(), 1, &flushRange);
+            memory::unmap(device.getDevice(), stagingIndexBuffer.memory);
+        }
+
+        if (usingStagingForVertexBuffer || usingStagingForIndexBuffer) {
+            VkCommandBuffer commandBuffer = beginSingleTimeCommands();
+            if (usingStagingForVertexBuffer) {
+                const VkBufferCopy bufferCopyRegion = { 0, 0, vertexDataSize };
+                vkCmdCopyBuffer(commandBuffer, stagingVertexBuffer.resource, meshBuffer.vertexBuffer.resource, 1, &bufferCopyRegion);
+            }
+            if (usingStagingForIndexBuffer) {
+                const VkBufferCopy bufferCopyRegion = { 0, 0, indexDataSize };
+                vkCmdCopyBuffer(commandBuffer, stagingIndexBuffer.resource, meshBuffer.vertexBuffer.resource, 1, &bufferCopyRegion);
+            }
+            //executeImmediateCommandBuffer(commandBuffer);
+            endSingleTimeCommands(commandBuffer);
+        }
+
+        if (usingStagingForVertexBuffer) {
+            destroyBuffer(device.getDevice(), stagingVertexBuffer);
+        }
+        if (usingStagingForIndexBuffer) {
+            destroyBuffer(device.getDevice(), stagingIndexBuffer);
+        }
+
+        return meshBuffer;
+    }
+    void destroyBuffer(const VkDevice& device, Resource<VkBuffer>& buffer) const
+    {
+        if (buffer.resource != VK_NULL_HANDLE) {
+            vkDestroyBuffer(device, buffer.resource, nullptr);
+        }
+        if (buffer.memory != VK_NULL_HANDLE) {
+            vkFreeMemory(device, buffer.memory, nullptr);
+        }
+        buffer = {};
     }
 };
 

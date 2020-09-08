@@ -186,7 +186,7 @@ public:
             subpass.pResolveAttachments = description.resolveAttachments.data();
             subpass.preserveAttachmentCount = static_cast<uint32_t>(description.preserveAttachments.size());
             subpass.pPreserveAttachments = description.preserveAttachments.data();
-            subpass.colorAttachmentCount = description.colorAttachments.size();
+            subpass.colorAttachmentCount = static_cast<uint32_t>(description.colorAttachments.size());
             subpass.pColorAttachments = description.colorAttachments.data();
             subpass.pDepthStencilAttachment = &description.depthStencilAttachment;
             return subpass;
@@ -230,12 +230,12 @@ public:
     std::vector<ShaderStage> createShader(Device device, const std::string& vertexShaderFile, const std::string& pixelShaderFile) {
         ShaderStage vertShaderStage{};
         vertShaderStage.stage = VK_SHADER_STAGE_VERTEX_BIT;
-        vertShaderStage.module = createShaderModule(device.getDevice(), readFile(vertexShaderFile));
+        vertShaderStage.module = createShaderModule(device.getDevice(), vkHelper::readFile(vertexShaderFile));
         vertShaderStage.pName = "main";
         
         ShaderStage fragShaderStage{};
         fragShaderStage.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-        fragShaderStage.module = createShaderModule(device.getDevice(), readFile(pixelShaderFile));
+        fragShaderStage.module = createShaderModule(device.getDevice(), vkHelper::readFile(pixelShaderFile));
         fragShaderStage.pName = "main";
 
         std::vector<ShaderStage> shaderStages{ vertShaderStage, fragShaderStage };
@@ -315,7 +315,7 @@ public:
 
         VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
         vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-        vertexInputInfo.vertexBindingDescriptionCount = vertexInputState.vertexBindingDescriptions.size();
+        vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(vertexInputState.vertexBindingDescriptions.size());
         vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertexInputState.vertexAttributeDescriptions.size());
         vertexInputInfo.pVertexBindingDescriptions = vertexInputState.vertexBindingDescriptions.data();
         vertexInputInfo.pVertexAttributeDescriptions = vertexInputState.vertexAttributeDescriptions.data();
