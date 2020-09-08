@@ -1,3 +1,9 @@
+/*
+ * Vulkan Renderer Program
+ *
+ * Copyright (C) 2020 Kyle Wang
+ */
+
 #include <cstdio>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
