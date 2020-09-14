@@ -10,10 +10,7 @@
 #include "swapchain.h"
 
 struct DescriptorPool {
-
-private:
     VkDevice m_device;
-public:
 
     VkDescriptorPool m_descriptorPool;
     std::vector<VkDescriptorSet> m_descriptorSets;

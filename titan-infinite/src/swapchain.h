@@ -14,8 +14,8 @@ const uint32_t HEIGHT = 720;
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
 struct SwapChain {
+    VkDevice m_device;
 
-public:
     VkSwapchainKHR m_swapChain;
     VkFormat m_swapChainImageFormat;
     VkExtent2D m_swapChainExtent;
@@ -26,10 +26,6 @@ public:
     std::vector<VkFence>       m_cmdBufExecutedFences;
     std::vector<VkSemaphore>   m_imageAvailableSemaphores;
     std::vector<VkSemaphore>   m_renderFinishedSemaphores;
-
-private:
-    VkDevice m_device;
-public:
 
     VkSwapchainKHR getSwapChain() const { return m_swapChain; }
     std::vector<VkImage> getSwapChainimages() const { return m_images; }

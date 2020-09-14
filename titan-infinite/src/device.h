@@ -30,10 +30,7 @@ const std::vector<const char*> deviceExtensions = {
 
 struct Device {
 
-private:
     GLFWwindow* m_window;
-
-public:
     VkInstance m_instance;
     VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
     VkDevice m_device;

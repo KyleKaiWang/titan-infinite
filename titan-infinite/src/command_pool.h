@@ -10,10 +10,7 @@
 #include <vulkan/vulkan.hpp>
 
 struct CommandPool {
-
-private:
     VkDevice m_device;
-public:
 
 	VkCommandPool m_commandPool;
     std::vector<VkCommandBuffer> m_commandBuffers;
