@@ -9,6 +9,7 @@
 #include "swapChain.h"
 #include "memory.h"
 #include <vulkan/vulkan.hpp>
+#include "buffer.h"
 
 struct SubpassDescription {
     std::vector<VkAttachmentReference> inputAttachments;
@@ -23,6 +24,7 @@ struct DescriptorSetLayoutBinding {
     VkDescriptorType descriptorType;
     uint32_t descriptorCount;
     VkShaderStageFlags stageFlags;
+    const VkSampler* pImmutableSamplers;
 };
 
 struct ShaderStage {
@@ -82,36 +84,7 @@ struct ColorBlendState {
     float blendConstants[4];
 };
 
-struct Renderer {
-
-private:
-    VkDevice m_device;
-
-public:
-    VkRenderPass m_renderPass;
-    std::vector<VkFramebuffer> m_framebuffers;
-    VkDescriptorSetLayout m_descriptorSetLayout;
-    VkPipelineLayout m_pipelineLayout;
-    VkPipeline m_graphicsPipeline;
-
-    const VkRenderPass& getRenderPass() { return m_renderPass; }
-    const std::vector<VkFramebuffer>& getFramebuffers() { return m_framebuffers; }
-    const VkDescriptorSetLayout& getDescritporSetLayout() { return m_descriptorSetLayout; }
-    const VkPipelineLayout& getPipelineLayout() { return m_pipelineLayout; }
-    const VkPipeline& getGraphicsPipeline() { return m_graphicsPipeline; }
-
-    void create(VkDevice device) {
-        m_device = device;
-    }
-
-    void destroy() {
-        for (auto framebuffer : m_framebuffers) {
-            vkDestroyFramebuffer(m_device, framebuffer, nullptr);
-        }
-        vkDestroyPipeline(m_device, m_graphicsPipeline, nullptr);
-        vkDestroyPipelineLayout(m_device, m_pipelineLayout, nullptr);
-        vkDestroyRenderPass(m_device, m_renderPass, nullptr);
-    }
+namespace renderer {
 
     VkImage createImage(const VkDevice& device,
                      VkImageCreateFlags flags,
@@ -169,7 +142,7 @@ public:
         return imageView;
     }
 
-    void createRenderPass(const VkDevice& device, 
+    VkRenderPass createRenderPass(const VkDevice& device,
                           const std::vector<VkAttachmentDescription>& attachmentDescriptions, 
                           const std::vector<SubpassDescription>& subpassDescriptions,
                           const std::vector<VkSubpassDependency>& subpassDependency) {
@@ -201,9 +174,11 @@ public:
         renderPassInfo.dependencyCount = static_cast<uint32_t>(subpassDependency.size());
         renderPassInfo.pDependencies = subpassDependency.empty() ? nullptr : &subpassDependency.front();;
 
-        if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &m_renderPass) != VK_SUCCESS) {
+        VkRenderPass renderPass;
+        if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
             throw std::runtime_error("failed to create render pass!");
         }
+        return renderPass;
     }
 
     VkFramebuffer createFramebuffer(const VkDevice& device,
@@ -224,22 +199,7 @@ public:
         if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &framebuffer) != VK_SUCCESS) {
             throw std::runtime_error("failed to create framebuffer!");
         }
-        return std::move(framebuffer);
-    }
-
-    std::vector<ShaderStage> createShader(Device device, const std::string& vertexShaderFile, const std::string& pixelShaderFile) {
-        ShaderStage vertShaderStage{};
-        vertShaderStage.stage = VK_SHADER_STAGE_VERTEX_BIT;
-        vertShaderStage.module = createShaderModule(device.getDevice(), vkHelper::readFile(vertexShaderFile));
-        vertShaderStage.pName = "main";
-        
-        ShaderStage fragShaderStage{};
-        fragShaderStage.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-        fragShaderStage.module = createShaderModule(device.getDevice(), vkHelper::readFile(pixelShaderFile));
-        fragShaderStage.pName = "main";
-
-        std::vector<ShaderStage> shaderStages{ vertShaderStage, fragShaderStage };
-        return shaderStages;
+        return framebuffer;
     }
 
     VkShaderModule createShaderModule(VkDevice device, const std::vector<char>& code) {
@@ -255,42 +215,63 @@ public:
         return shaderModule;
     }
 
-    void createDescriptorSetLayout(const Device& device, const std::vector<DescriptorSetLayoutBinding>& descriptorSetLayoutBindings) {
-        std::vector<VkDescriptorSetLayoutBinding> contertedBindings;
+    std::vector<ShaderStage> createShader(const VkDevice& device, const std::string& vertexShaderFile, const std::string& pixelShaderFile) {
+        ShaderStage vertShaderStage{};
+        vertShaderStage.stage = VK_SHADER_STAGE_VERTEX_BIT;
+        vertShaderStage.module = renderer::createShaderModule(device, vkHelper::readFile(vertexShaderFile));
+        vertShaderStage.pName = "main";
+        
+        ShaderStage fragShaderStage{};
+        fragShaderStage.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        fragShaderStage.module = renderer::createShaderModule(device, vkHelper::readFile(pixelShaderFile));
+        fragShaderStage.pName = "main";
+
+        std::vector<ShaderStage> shaderStages{ vertShaderStage, fragShaderStage };
+        return shaderStages;
+    }
+
+    
+
+    VkDescriptorSetLayout createDescriptorSetLayout(const VkDevice& device, const std::vector<DescriptorSetLayoutBinding>& descriptorSetLayoutBindings) {
+        std::vector<VkDescriptorSetLayoutBinding> convertedBindings;
         for (const DescriptorSetLayoutBinding& binding: descriptorSetLayoutBindings) {
             VkDescriptorSetLayoutBinding convertedBinding;
             convertedBinding.binding = binding.binding;
             convertedBinding.descriptorType = binding.descriptorType;
             convertedBinding.descriptorCount = binding.descriptorCount;
             convertedBinding.stageFlags = binding.stageFlags;
-            convertedBinding.pImmutableSamplers = nullptr;
+            convertedBinding.pImmutableSamplers = binding.pImmutableSamplers;
 
-            contertedBindings.emplace_back(convertedBinding);
+            convertedBindings.emplace_back(convertedBinding);
         }
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         layoutInfo.bindingCount = static_cast<uint32_t>(descriptorSetLayoutBindings.size());
-        layoutInfo.pBindings = contertedBindings.data();
+        layoutInfo.pBindings = convertedBindings.data();
 
-        if (vkCreateDescriptorSetLayout(device.getDevice(), &layoutInfo, nullptr, &m_descriptorSetLayout) != VK_SUCCESS) {
+        VkDescriptorSetLayout descriptorSetLayout;
+        if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
             throw std::runtime_error("failed to create descriptor set layout!");
         }
+        return descriptorSetLayout;
     }
 
-    void createPipelineLayout(const Device& device, VkDescriptorSetLayout descriptorSetLayout) {
+    VkPipelineLayout createPipelineLayout(const VkDevice& device, const std::vector<VkDescriptorSetLayout>& descriptorSetLayout, const std::vector<VkPushConstantRange>& pushConstantRanges) {
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
         pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        pipelineLayoutInfo.setLayoutCount = 1;
+        pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(descriptorSetLayout.size());
         pipelineLayoutInfo.pushConstantRangeCount = 0;
-        pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+        pipelineLayoutInfo.pSetLayouts = descriptorSetLayout.data();
 
-        if (vkCreatePipelineLayout(device.getDevice(), &pipelineLayoutInfo, nullptr, &m_pipelineLayout) != VK_SUCCESS) {
+        VkPipelineLayout pipelineLayout;
+        if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
             throw std::runtime_error("failed to create pipeline layout!");
         }
+        return pipelineLayout;
     }
 
-    void createGraphicsPipeline(
-        const Device& device,
+    VkPipeline createGraphicsPipeline(
+        const VkDevice& device,
         const std::vector<ShaderStage>& shaderStages, 
         const VertexInputState& vertexInputState,
         const InputAssemblyState& inputAssemblyState,
@@ -406,12 +387,10 @@ public:
         pipelineInfo.subpass = 0;
         pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 
-        if (vkCreateGraphicsPipelines(device.getDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_graphicsPipeline) != VK_SUCCESS) {
+        VkPipeline pipeline;
+        if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline) != VK_SUCCESS) {
             throw std::runtime_error("failed to create graphics pipeline!");
         }
-
-        //vkDestroyShaderModule(m_device, fragShaderModule, nullptr);
-        //vkDestroyShaderModule(m_device, vertShaderModule, nullptr);
-
+        return pipeline;
     }
 };

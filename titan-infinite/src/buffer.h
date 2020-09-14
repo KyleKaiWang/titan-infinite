@@ -13,7 +13,7 @@ struct Resource
 {
     T resource;
     VkDeviceMemory memory;
-    VkDeviceSize allocationSize;
+    VkDeviceSize bufferSize;
     uint32_t memoryTypeIndex;
 };
 

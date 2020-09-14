@@ -9,7 +9,7 @@
 #include "swapChain.h"
 #include <vulkan/vulkan.hpp>
 
-struct Command {
+struct CommandPool {
 
 private:
     VkDevice m_device;
@@ -39,7 +39,9 @@ public:
             throw std::runtime_error("failed to create command pool!");
         }
     }
+};
 
+namespace commandBuffer {
     std::vector<VkCommandBuffer> allocate(const VkDevice& device, const VkCommandPool& commandPool, VkCommandBufferLevel level, uint32_t commandBufferCount) {
         VkCommandBufferAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -54,16 +56,8 @@ public:
         return std::move(commandBuffers);
     }
 
-    void beginCommandBuffer(const VkDevice& device, const VkCommandBuffer& cmdBuffer, VkCommandBufferBeginInfo* cmdBufferBeginInfo) {
-        vkBeginCommandBuffer(cmdBuffer, cmdBufferBeginInfo);
-    }
-
-    void endCommandBuffer(const VkCommandBuffer& commandBuffer) {
-        vkEndCommandBuffer(commandBuffer);
-    }
-
     void submitCommandBuffer(const VkQueue& queue, const VkSubmitInfo* submitInfo, const VkFence& fence) {
         vkQueueSubmit(queue, 1, submitInfo, fence ? fence : VK_NULL_HANDLE);
         vkQueueWaitIdle(queue);
     }
-};
+}
