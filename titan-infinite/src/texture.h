@@ -7,6 +7,7 @@
 #pragma once
 #include <vulkan/vulkan.hpp>
 #include "buffer.h"
+#include "memory.h"
 
 struct TextureObject
 {
@@ -126,7 +127,7 @@ namespace texture {
         vkCmdPipelineBarrier(commandBuffer, src_stages, dest_stages, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
     }
 
-    TextureObject loadTexture(const std::string& filename, Device& device, const CommandPool& cmdPool, int channels = 4) {
+    TextureObject loadTexture(const std::string& filename, Device& device, int channels = 4) {
         TextureObject texObj;
         int texChannels;
         stbi_uc* pixels = stbi_load(filename.c_str(), &texObj.width, &texObj.height, &texChannels, channels);
@@ -214,7 +215,7 @@ namespace texture {
         memcpy(data, pixels, static_cast<size_t>(texObj.width * texObj.height * 4));
         memory::unmap(device.getDevice(), mappedMemory);
 
-        std::vector<VkCommandBuffer> cmdBuffers = commandBuffer::allocate(device.getDevice(), cmdPool.getCommandPool(), VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
+        std::vector<VkCommandBuffer> cmdBuffers = renderer::allocateCommandBuffers(device.getDevice(), device.getCommandPool(), VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
         VkCommandBufferBeginInfo beginInfo{};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -228,8 +229,7 @@ namespace texture {
                 VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
         }
         else {
-            /* Since we're going to blit to the texture image, set its layout to
-             * DESTINATION_OPTIMAL */
+            /* Since we're going to blit to the texture image, set its layout to DESTINATION_OPTIMAL */
             texture::setImageLayout(cmdBuffers[0], texObj.image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
 
@@ -251,8 +251,7 @@ namespace texture {
             /* Put the copy command into the command buffer */
             vkCmdCopyBufferToImage(cmdBuffers[0], texObj.buffer, texObj.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
 
-            /* Set the layout for the texture image from DESTINATION_OPTIMAL to
-             * SHADER_READ_ONLY */
+            /* Set the layout for the texture image from DESTINATION_OPTIMAL to SHADER_READ_ONLY */
             texObj.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             setImageLayout(cmdBuffers[0], texObj.image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, texObj.imageLayout,
                 VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);

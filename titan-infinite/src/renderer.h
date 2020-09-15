@@ -5,11 +5,8 @@
  */
 
 #pragma once
-#include "device.h"
-#include "swapChain.h"
-#include "memory.h"
 #include <vulkan/vulkan.hpp>
-#include "buffer.h"
+#include "vkHelpers.h"
 
 struct SubpassDescription {
     std::vector<VkAttachmentReference> inputAttachments;
@@ -202,7 +199,7 @@ namespace renderer {
         return framebuffer;
     }
 
-    VkShaderModule createShaderModule(VkDevice device, const std::vector<char>& code) {
+    VkShaderModule createShaderModule(const VkDevice& device, const std::vector<char>& code) {
         VkShaderModuleCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
         createInfo.codeSize = code.size();
@@ -392,5 +389,38 @@ namespace renderer {
             throw std::runtime_error("failed to create graphics pipeline!");
         }
         return pipeline;
+    }
+
+    std::vector<VkDescriptorSet> createDescriptorSets(const VkDevice& device, const VkDescriptorPool& descriptorPool, const std::vector<VkDescriptorSetLayout>& descriptorSetLayout) {
+        VkDescriptorSetAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = descriptorPool;
+        allocInfo.descriptorSetCount = (uint32_t)descriptorSetLayout.size();
+        allocInfo.pSetLayouts = descriptorSetLayout.data();
+
+        std::vector<VkDescriptorSet> descriptorSets(descriptorSetLayout.size());
+        if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate descriptor sets!");
+        }
+        return descriptorSets;
+    }
+
+    std::vector<VkCommandBuffer> allocateCommandBuffers(const VkDevice& device, const VkCommandPool& commandPool, VkCommandBufferLevel level, uint32_t commandBufferCount) {
+        VkCommandBufferAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.level = level;
+        allocInfo.commandPool = commandPool;
+        allocInfo.commandBufferCount = commandBufferCount;
+
+        std::vector<VkCommandBuffer> commandBuffers(commandBufferCount);
+        if (vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate command buffers!");
+        }
+        return std::move(commandBuffers);
+    }
+
+    void submitCommandBuffer(const VkQueue& queue, const VkSubmitInfo* submitInfo, const VkFence& fence) {
+        vkQueueSubmit(queue, 1, submitInfo, fence ? fence : VK_NULL_HANDLE);
+        vkQueueWaitIdle(queue);
     }
 };

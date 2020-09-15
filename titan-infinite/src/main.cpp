@@ -32,14 +32,11 @@
 #include <chrono>
 
 #include "device.h"
-#include "swapchain.h"
-#include "command_pool.h"
 #include "camera.h"
 #include "window.h"
 #include "renderer.h"
 #include "buffer.h"
 #include "texture.h"
-#include "descriptor_pool.h"
 
 struct UniformBufferObject {
     alignas(16) glm::mat4 model;
@@ -113,8 +110,6 @@ public:
 private:
     Window m_window;
     Device m_device;
-    SwapChain m_swapChain;
-    CommandPool m_commandPool;
 
     TextureObject m_texObj;
 
@@ -130,7 +125,6 @@ private:
     std::vector<VkBuffer> m_uniformBuffers;
     std::vector<VkDeviceMemory> m_uniformBuffersMemory;
 
-    DescriptorPool m_descriptorPool;
     size_t m_currentFrame = 0;
 
     VkRenderPass m_renderPass;
@@ -148,27 +142,6 @@ private:
         // Physical, Logical Device and Surface
         m_device.create(m_window.getNativeWindow());
 
-        // Swapchain
-        m_swapChain.create(m_device.getPhysicalDevice(), m_device.getDevice(), m_device.getSurface());
-        
-        // Create Swapchain Image Views
-        {
-            m_swapChain.m_imageViews.resize(m_swapChain.m_images.size());
-            for (uint32_t i = 0; i < m_swapChain.m_images.size(); i++) {
-                m_swapChain.m_imageViews[i] = renderer::createImageView(m_device.getDevice(),
-                    m_swapChain.m_images[i], 
-                    VK_IMAGE_VIEW_TYPE_2D, 
-                    m_swapChain.getSwapChainImageFormat(), 
-                    { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G,VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A },
-                    { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
-            }
-        }
-
-        // CommandPool
-        m_commandPool.create(m_device.getDevice());
-        m_commandPool.createCommandPool(m_device.getDevice(), vkHelper::findQueueFamilies(m_device.getPhysicalDevice(), m_device.getSurface()).graphicsFamily.value());
-        m_commandPool.m_commandBuffers = commandBuffer::allocate(m_device.getDevice(), m_commandPool.getCommandPool(), VK_COMMAND_BUFFER_LEVEL_PRIMARY, (uint32_t)m_swapChain.getSwapChainimages().size());
-        
         // Depthbuffer
         {
             auto depthFormat = vkHelper::findDepthFormat(m_device.getPhysicalDevice());
@@ -188,7 +161,7 @@ private:
         // RenderPass
         {
             VkAttachmentDescription colorAttachment{};
-            colorAttachment.format = m_swapChain.getSwapChainImageFormat();
+            colorAttachment.format = m_device.getSwapChainImageFormat();
             colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
             colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
             colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -238,20 +211,20 @@ private:
 
         // Framebuffers
         {
-            std::vector<VkImageView> imageViews =  m_swapChain.getSwapChainimageViews();
+            std::vector<VkImageView> imageViews = m_device.getSwapChainimageViews();
             m_framebuffers.resize(imageViews.size());
-            for (std::size_t i = 0; i < m_swapChain.getSwapChainimages().size(); ++i) {
-                m_framebuffers[i] = renderer::createFramebuffer(m_device.getDevice(), m_renderPass, { imageViews[i], m_depthImageView }, m_swapChain.getSwapChainExtent(), 1);
+            for (std::size_t i = 0; i < m_device.getSwapChainimages().size(); ++i) {
+                m_framebuffers[i] = renderer::createFramebuffer(m_device.getDevice(), m_renderPass, { imageViews[i], m_depthImageView }, m_device.getSwapChainExtent(), 1);
             }
         }
 
         // Uniformbuffer
         {
             VkDeviceSize bufferSize = sizeof(UniformBufferObject);
-            m_uniformBuffers.resize(m_swapChain.getSwapChainimages().size());
-            m_uniformBuffersMemory.resize(m_swapChain.getSwapChainimages().size());
+            m_uniformBuffers.resize(m_device.getSwapChainimages().size());
+            m_uniformBuffersMemory.resize(m_device.getSwapChainimages().size());
 
-            for (size_t i = 0; i < m_swapChain.getSwapChainimages().size(); ++i) {
+            for (size_t i = 0; i < m_device.getSwapChainimages().size(); ++i) {
                 m_uniformBuffers[i] = buffer::createBuffer(m_device.getDevice(), bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE);
 
                 VkMemoryRequirements memReqs;
@@ -322,7 +295,7 @@ private:
 
         // Texture
         {
-            m_texObj = texture::loadTexture("data/textures/Checkerboard.png", m_device, m_commandPool, 4);
+            m_texObj = texture::loadTexture("data/textures/Checkerboard.png", m_device, 4);
         }
 
         // Pipeline Layout and Discriptor Set
@@ -347,10 +320,9 @@ private:
 
         // Descriptor Pool
         {
-            m_descriptorPool.create(m_device.getDevice());
-            m_descriptorPool.createDescriptorPool(m_device.getDevice(), m_swapChain);
-            m_descriptorPool.createDescriptorSets(m_device.getDevice(), m_swapChain, m_descriptorSetLayout);
-            for (size_t i = 0; i < m_swapChain.getSwapChainimages().size(); ++i) {
+            std::vector<VkDescriptorSetLayout> layouts(m_device.getSwapChainimages().size(), m_descriptorSetLayout);
+            m_device.m_descriptorSets = renderer::createDescriptorSets(m_device.getDevice(), m_device.getDescriptorPool(), layouts );
+            for (size_t i = 0; i < m_device.getSwapChainimages().size(); ++i) {
                 VkDescriptorBufferInfo bufferInfo{};
                 bufferInfo.buffer = m_uniformBuffers[i];
                 bufferInfo.offset = 0;
@@ -364,7 +336,7 @@ private:
                 std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
 
                 descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                descriptorWrites[0].dstSet = m_descriptorPool.m_descriptorSets[i];
+                descriptorWrites[0].dstSet = m_device.m_descriptorSets[i];
                 descriptorWrites[0].dstBinding = 0;
                 descriptorWrites[0].dstArrayElement = 0;
                 descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -372,7 +344,7 @@ private:
                 descriptorWrites[0].pBufferInfo = &bufferInfo;
 
                 descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                descriptorWrites[1].dstSet = m_descriptorPool.m_descriptorSets[i];
+                descriptorWrites[1].dstSet = m_device.m_descriptorSets[i];
                 descriptorWrites[1].dstBinding = 1;
                 descriptorWrites[1].dstArrayElement = 0;
                 descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -397,8 +369,8 @@ private:
             ViewportState viewport{};
             viewport.topX = 0;
             viewport.topY = 0;
-            viewport.width = m_swapChain.getSwapChainExtent().width;
-            viewport.height = m_swapChain.getSwapChainExtent().height;
+            viewport.width = m_device.getSwapChainExtent().width;
+            viewport.height = m_device.getSwapChainExtent().height;
 
             RasterizationState rasterizer{};
             rasterizer.depthClampEnable = VK_FALSE;
@@ -455,7 +427,7 @@ private:
 
     void render() {
         const VkDeviceSize zeroOffset = 0;
-        VkCommandBuffer commandBuffer = m_commandPool.getCommandBuffers()[m_currentFrame];
+        VkCommandBuffer commandBuffer = m_device.getCommandBuffers()[m_currentFrame];
         VkFramebuffer framebuffer = m_framebuffers[m_currentFrame];
 
         // Begin recording current frame command buffer.
@@ -476,7 +448,7 @@ private:
             beginInfo.renderPass = m_renderPass;
             beginInfo.framebuffer = framebuffer;
             beginInfo.renderArea.offset = { 0, 0 };
-            beginInfo.renderArea.extent = m_swapChain.getSwapChainExtent();
+            beginInfo.renderArea.extent = m_device.getSwapChainExtent();
             beginInfo.clearValueCount = (uint32_t)clearValues.size();
             beginInfo.pClearValues = clearValues.data();
 
@@ -492,10 +464,10 @@ private:
     }
 
     void drawFrame() {
-        vkWaitForFences(m_device.getDevice(), 1, &m_swapChain.m_cmdBufExecutedFences[m_currentFrame], VK_TRUE, UINT64_MAX);
+        vkWaitForFences(m_device.getDevice(), 1, &m_device.m_cmdBufExecutedFences[m_currentFrame], VK_TRUE, UINT64_MAX);
 
         uint32_t imageIndex;
-        VkResult result = vkAcquireNextImageKHR(m_device.getDevice(), m_swapChain.getSwapChain(), UINT64_MAX, m_swapChain.m_imageAvailableSemaphores[m_currentFrame], VK_NULL_HANDLE, &imageIndex);
+        VkResult result = vkAcquireNextImageKHR(m_device.getDevice(), m_device.getSwapChain(), UINT64_MAX, m_device.m_imageAvailableSemaphores[m_currentFrame], VK_NULL_HANDLE, &imageIndex);
 
         if (result == VK_ERROR_OUT_OF_DATE_KHR) {
             //recreateSwapChain();
@@ -507,15 +479,15 @@ private:
 
         updateUniformBuffer(imageIndex);
 
-        if (m_swapChain.m_imagesInFlight[imageIndex] != VK_NULL_HANDLE) {
-            vkWaitForFences(m_device.getDevice(), 1, &m_swapChain.m_imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX);
+        if (m_device.m_imagesInFlight[imageIndex] != VK_NULL_HANDLE) {
+            vkWaitForFences(m_device.getDevice(), 1, &m_device.m_imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX);
         }
-        m_swapChain.m_imagesInFlight[imageIndex] = m_swapChain.m_cmdBufExecutedFences[m_currentFrame];
+        m_device.m_imagesInFlight[imageIndex] = m_device.m_cmdBufExecutedFences[m_currentFrame];
         
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-        VkSemaphore waitSemaphores[] = { m_swapChain.m_imageAvailableSemaphores[m_currentFrame] };
+        VkSemaphore waitSemaphores[] = { m_device.m_imageAvailableSemaphores[m_currentFrame] };
         VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
         submitInfo.waitSemaphoreCount = 1;
         submitInfo.pWaitSemaphores = waitSemaphores;
@@ -523,22 +495,22 @@ private:
 
         submitInfo.commandBufferCount = 1;
         //submitInfo.commandBufferCount = m_command.m_commandBuffers.size();
-        submitInfo.pCommandBuffers = &m_commandPool.m_commandBuffers[imageIndex];
+        submitInfo.pCommandBuffers = &m_device.m_commandBuffers[imageIndex];
 
-        VkSemaphore signalSemaphores[] = { m_swapChain.m_renderFinishedSemaphores[m_currentFrame] };
+        VkSemaphore signalSemaphores[] = { m_device.m_renderFinishedSemaphores[m_currentFrame] };
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
 
-        vkResetFences(m_device.getDevice(), 1, &m_swapChain.m_cmdBufExecutedFences[m_currentFrame]);
+        vkResetFences(m_device.getDevice(), 1, &m_device.m_cmdBufExecutedFences[m_currentFrame]);
 
-        commandBuffer::submitCommandBuffer(m_device.getGraphicsQueue(), &submitInfo, m_swapChain.m_cmdBufExecutedFences[m_currentFrame]);
+        renderer::submitCommandBuffer(m_device.getGraphicsQueue(), &submitInfo, m_device.m_cmdBufExecutedFences[m_currentFrame]);
 
         VkPresentInfoKHR presentInfo{};
         presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
         presentInfo.waitSemaphoreCount = 1;
         presentInfo.pWaitSemaphores = signalSemaphores;
 
-        VkSwapchainKHR swapChains[] = { m_swapChain.getSwapChain() };
+        VkSwapchainKHR swapChains[] = { m_device.getSwapChain() };
         presentInfo.swapchainCount = 1;
         presentInfo.pSwapchains = swapChains;
 
@@ -567,7 +539,7 @@ private:
         sceneRotationMatrix = glm::rotate(sceneRotationMatrix, glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
         ubo.view = glm::lookAt(glm::vec3(0.0f, 0.0f, m_window.getCamera().distance), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-        ubo.proj = glm::perspective(m_window.getCamera().fov, m_swapChain.getSwapChainExtent().width / (float)m_swapChain.getSwapChainExtent().height, 0.1f, 10.0f);
+        ubo.proj = glm::perspective(m_window.getCamera().fov, m_device.getSwapChainExtent().width / (float)m_device.getSwapChainExtent().height, 0.1f, 10.0f);
         ubo.proj[1][1] *= -1;
         ubo.sceneRotationMatrix = sceneRotationMatrix;
         
@@ -586,13 +558,13 @@ private:
         vkDestroyPipeline(m_device.getDevice(), m_graphicsPipeline, nullptr);
         vkDestroyPipelineLayout(m_device.getDevice(), m_pipelineLayout, nullptr);
         vkDestroyRenderPass(m_device.getDevice(), m_renderPass, nullptr);
-        m_commandPool.destroy();
-        m_descriptorPool.destroy();
-        for (size_t i = 0; i < m_swapChain.getSwapChainimages().size(); ++i) {
+        m_device.destroyCommandPool();
+        m_device.destroyDescriptorPool();
+        for (size_t i = 0; i < m_device.getSwapChainimages().size(); ++i) {
             vkDestroyBuffer(m_device.getDevice(), m_uniformBuffers[i], nullptr);
             vkFreeMemory(m_device.getDevice(), m_uniformBuffersMemory[i], nullptr);
         }
-        m_swapChain.destroy();
+        m_device.destroy();
     }
 
     void cleanup() {
@@ -602,7 +574,6 @@ private:
     
         vkDestroyImage(m_device.getDevice(), m_texObj.image, nullptr);
         vkFreeMemory(m_device.getDevice(), m_texObj.bufferMemory, nullptr);
-    
     
         vkDestroyBuffer(m_device.getDevice(), m_indexBuffer, nullptr);
         vkFreeMemory(m_device.getDevice(), m_indexBufferMemory, nullptr);
@@ -617,14 +588,14 @@ private:
     }
 
     void createCommandBuffers() {
-        m_commandPool.m_commandBuffers.resize(m_framebuffers.size());
-        for (size_t i = 0; i < m_commandPool.getCommandBuffers().size(); ++i) {
+        m_device.m_commandBuffers.resize(m_framebuffers.size());
+        for (size_t i = 0; i < m_device.m_commandBuffers.size(); ++i) {
             VkCommandBufferBeginInfo beginInfo{};
             beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             beginInfo.flags = 0;
             beginInfo.pInheritanceInfo = nullptr;
 
-            if (vkBeginCommandBuffer(m_commandPool.getCommandBuffers()[i], &beginInfo) != VK_SUCCESS) {
+            if (vkBeginCommandBuffer(m_device.m_commandBuffers[i], &beginInfo) != VK_SUCCESS) {
                 throw std::runtime_error("failed to begin recording command buffer!");
             }
 
@@ -633,7 +604,7 @@ private:
             renderPassInfo.renderPass = m_renderPass;
             renderPassInfo.framebuffer = m_framebuffers[i];
             renderPassInfo.renderArea.offset = { 0, 0 };
-            renderPassInfo.renderArea.extent = m_swapChain.getSwapChainExtent();
+            renderPassInfo.renderArea.extent = m_device.getSwapChainExtent();
 
             std::array<VkClearValue, 2> clearValues{};
             clearValues[0].color = { 0.0f, 0.0f, 0.0f, 1.0f };
@@ -642,23 +613,23 @@ private:
             renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
             renderPassInfo.pClearValues = clearValues.data();
 
-            vkCmdBeginRenderPass(m_commandPool.m_commandBuffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+            vkCmdBeginRenderPass(m_device.m_commandBuffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-            vkCmdBindPipeline(m_commandPool.m_commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphicsPipeline);
+            vkCmdBindPipeline(m_device.m_commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphicsPipeline);
 
             VkBuffer vertexBuffers[] = { m_vertexBuffer };
             VkDeviceSize offsets[] = { 0 };
-            vkCmdBindVertexBuffers(m_commandPool.m_commandBuffers[i], 0, 1, vertexBuffers, offsets);
+            vkCmdBindVertexBuffers(m_device.m_commandBuffers[i], 0, 1, vertexBuffers, offsets);
 
-            vkCmdBindIndexBuffer(m_commandPool.m_commandBuffers[i], m_indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+            vkCmdBindIndexBuffer(m_device.m_commandBuffers[i], m_indexBuffer, 0, VK_INDEX_TYPE_UINT16);
 
-            vkCmdBindDescriptorSets(m_commandPool.m_commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, 1, &m_descriptorPool.m_descriptorSets[i], 0, nullptr);
+            vkCmdBindDescriptorSets(m_device.m_commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, 1, &m_device.m_descriptorSets[i], 0, nullptr);
 
-            vkCmdDrawIndexed(m_commandPool.m_commandBuffers[i], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+            vkCmdDrawIndexed(m_device.m_commandBuffers[i], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
-            vkCmdEndRenderPass(m_commandPool.m_commandBuffers[i]);
+            vkCmdEndRenderPass(m_device.m_commandBuffers[i]);
 
-            if (vkEndCommandBuffer(m_commandPool.m_commandBuffers[i]) != VK_SUCCESS) {
+            if (vkEndCommandBuffer(m_device.m_commandBuffers[i]) != VK_SUCCESS) {
                 throw std::runtime_error("failed to record command buffer!");
             }
         }
