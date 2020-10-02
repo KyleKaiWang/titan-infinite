@@ -405,7 +405,7 @@ namespace renderer {
         return descriptorSets;
     }
 
-    std::vector<VkCommandBuffer> allocateCommandBuffers(const VkDevice& device, const VkCommandPool& commandPool, VkCommandBufferLevel level, uint32_t commandBufferCount) {
+    std::vector<VkCommandBuffer> createCommandBuffers(const VkDevice& device, const VkCommandPool& commandPool, VkCommandBufferLevel level, uint32_t commandBufferCount) {
         VkCommandBufferAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         allocInfo.level = level;
@@ -419,8 +419,60 @@ namespace renderer {
         return std::move(commandBuffers);
     }
 
+    VkCommandBuffer createCommandBuffer(const VkDevice& device, const VkCommandPool& commandPool, VkCommandBufferLevel level, bool begin)
+    {
+        VkCommandBufferAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.level = level;
+        allocInfo.commandPool = commandPool;
+        allocInfo.commandBufferCount = 1;
+        VkCommandBuffer cmdBuffer;
+        if (vkAllocateCommandBuffers(device, &allocInfo, &cmdBuffer) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate command buffers!");
+        }
+        // If requested, also start recording for the new command buffer
+        if (begin)
+        {
+            VkCommandBufferBeginInfo beginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+            beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+        }
+        return cmdBuffer;
+    }
+
     void submitCommandBuffer(const VkQueue& queue, const VkSubmitInfo* submitInfo, const VkFence& fence) {
         vkQueueSubmit(queue, 1, submitInfo, fence ? fence : VK_NULL_HANDLE);
         vkQueueWaitIdle(queue);
+    }
+
+    void flushCommandBuffer(const VkDevice& device, const VkCommandBuffer& commandBuffer, const VkQueue& queue, const VkCommandPool& pool, bool free)
+    {
+        if (commandBuffer == VK_NULL_HANDLE) return;
+
+        vkEndCommandBuffer(commandBuffer);
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &commandBuffer;
+        
+        // Create fence to ensure that the command buffer has finished executing
+        VkFenceCreateInfo fenceInfo{};
+        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+        VkFence fence;
+        if(vkCreateFence(device, &fenceInfo, nullptr, &fence) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create synchronization objects for a frame!");
+        }   
+        vkQueueSubmit(queue, 1, &submitInfo, fence);
+
+        // Wait for the fence to signal that command buffer has finished executing
+        vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
+        vkDestroyFence(device, fence, nullptr);
+        if (free)
+        {
+            vkFreeCommandBuffers(device, pool, 1, &commandBuffer);
+        }
     }
 };

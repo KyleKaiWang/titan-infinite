@@ -93,7 +93,7 @@ struct Device {
         createCommandPool(m_device, vkHelper::findQueueFamilies(m_physicalDevice, m_surface).graphicsFamily.value());
         m_commandBuffers =  renderer::allocateCommandBuffers(m_device, m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, (uint32_t)m_images.size());
 
-        createDescriptorPool(m_device);
+        //createDescriptorPool(m_device);
     }
 
     void destroy() {
@@ -228,18 +228,12 @@ struct Device {
         vkDestroyCommandPool(m_device, m_commandPool, NULL);
     }
 
-    void createDescriptorPool(const VkDevice& device) {
-        std::array<VkDescriptorPoolSize, 2> poolSizes{};
-        poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        poolSizes[0].descriptorCount = static_cast<uint32_t>(m_images.size());
-        poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        poolSizes[1].descriptorCount = static_cast<uint32_t>(m_images.size());
-
+    void createDescriptorPool(const VkDevice& device, const std::vector<VkDescriptorPoolSize>& poolSizes, uint32_t maxSets) {
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
         poolInfo.pPoolSizes = poolSizes.data();
-        poolInfo.maxSets = static_cast<uint32_t>(m_images.size());
+        poolInfo.maxSets = maxSets;
 
         if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &m_descriptorPool) != VK_SUCCESS) {
             throw std::runtime_error("failed to create descriptor pool!");

@@ -13,14 +13,14 @@ struct TextureObject
 {
     VkSampler sampler;
     VkImage image;
+    VkDeviceMemory imageMemory;
     VkImageLayout imageLayout;
     VkImageView view;
-    
+    VkDescriptorImageInfo descriptor;
     bool needs_staging;
     VkBuffer buffer;
     VkDeviceSize buffer_size;
 
-    VkDeviceMemory imageMemory;
     VkDeviceMemory bufferMemory;
     int32_t width, height;
     uint32_t layers;
@@ -127,7 +127,7 @@ namespace texture {
         vkCmdPipelineBarrier(commandBuffer, src_stages, dest_stages, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
     }
 
-    TextureObject loadTexture(const std::string& filename, Device& device, int channels = 4) {
+    TextureObject loadTexture(const std::string& filename, Device* device, int channels = 4) {
         TextureObject texObj;
         int texChannels;
         stbi_uc* pixels = stbi_load(filename.c_str(), &texObj.width, &texObj.height, &texChannels, channels);
@@ -136,11 +136,11 @@ namespace texture {
         }
 
         VkFormatProperties formatProps;
-        vkGetPhysicalDeviceFormatProperties(device.getPhysicalDevice(), VK_FORMAT_R8G8B8A8_UNORM, &formatProps);
+        vkGetPhysicalDeviceFormatProperties(device->getPhysicalDevice(), VK_FORMAT_R8G8B8A8_UNORM, &formatProps);
         texObj.needs_staging = (!(formatProps.linearTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT));
         
         texObj.image = renderer::createImage(
-            device.getDevice(),
+            device->getDevice(),
             0,
             VK_IMAGE_TYPE_2D,
             VK_FORMAT_R8G8B8A8_UNORM,
@@ -155,19 +155,19 @@ namespace texture {
             );
 
         VkMemoryRequirements memReqs;
-        vkGetImageMemoryRequirements(device.getDevice(), texObj.image, &memReqs);
+        vkGetImageMemoryRequirements(device->getDevice(), texObj.image, &memReqs);
 
         VkMemoryAllocateInfo allocInfo = {};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.pNext = NULL;
         allocInfo.allocationSize = memReqs.size;
-        allocInfo.memoryTypeIndex = device.findMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        allocInfo.memoryTypeIndex = device->findMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-        if (vkAllocateMemory(device.getDevice(), &allocInfo, nullptr, &(texObj.imageMemory)) != VK_SUCCESS) {
+        if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &(texObj.imageMemory)) != VK_SUCCESS) {
             throw std::runtime_error("Failed to allocate buffer memory!");
         }
 
-        if (vkBindImageMemory(device.getDevice(), texObj.image, texObj.imageMemory, 0) != VK_SUCCESS) {
+        if (vkBindImageMemory(device->getDevice(), texObj.image, texObj.imageMemory, 0) != VK_SUCCESS) {
             throw std::runtime_error("Failed to bind image memory");
         }
 
@@ -181,25 +181,25 @@ namespace texture {
 
         if (texObj.needs_staging) {
             texObj.buffer = buffer::createBuffer(
-                device.getDevice(), 
+                device->getDevice(), 
                 texObj.width * texObj.height * 4,
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
                 VK_SHARING_MODE_EXCLUSIVE
                 );
 
             VkMemoryRequirements memReqs;
-            vkGetBufferMemoryRequirements(device.getDevice(), texObj.buffer, &memReqs);
+            vkGetBufferMemoryRequirements(device->getDevice(), texObj.buffer, &memReqs);
 
             VkMemoryAllocateInfo allocInfo{};
             allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
             allocInfo.allocationSize = memReqs.size;
-            allocInfo.memoryTypeIndex = device.findMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+            allocInfo.memoryTypeIndex = device->findMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-            if (vkAllocateMemory(device.getDevice(), &allocInfo, nullptr, &texObj.bufferMemory) != VK_SUCCESS) {
+            if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &texObj.bufferMemory) != VK_SUCCESS) {
                 throw std::runtime_error("No mappable, coherent memory!");
             }
 
-            if (vkBindBufferMemory(device.getDevice(), texObj.buffer, texObj.bufferMemory, 0) != VK_SUCCESS) {
+            if (vkBindBufferMemory(device->getDevice(), texObj.buffer, texObj.bufferMemory, 0) != VK_SUCCESS) {
                 throw std::runtime_error("Failed to bind buffer memory");
             }
         }
@@ -207,15 +207,15 @@ namespace texture {
             texObj.buffer = VK_NULL_HANDLE;
             texObj.bufferMemory = VK_NULL_HANDLE;
 
-            vkGetImageSubresourceLayout(device.getDevice(), texObj.image, &subres, &layout);
+            vkGetImageSubresourceLayout(device->getDevice(), texObj.image, &subres, &layout);
         }
 
         VkDeviceMemory mappedMemory = texObj.needs_staging ? texObj.bufferMemory : texObj.imageMemory;
-        memory::map(device.getDevice(), mappedMemory, 0, memReqs.size, &data);
+        memory::map(device->getDevice(), mappedMemory, 0, memReqs.size, &data);
         memcpy(data, pixels, static_cast<size_t>(texObj.width * texObj.height * 4));
-        memory::unmap(device.getDevice(), mappedMemory);
+        memory::unmap(device->getDevice(), mappedMemory);
 
-        std::vector<VkCommandBuffer> cmdBuffers = renderer::allocateCommandBuffers(device.getDevice(), device.getCommandPool(), VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
+        std::vector<VkCommandBuffer> cmdBuffers = renderer::createCommandBuffers(device->getDevice(), device->getCommandPool(), VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
         VkCommandBufferBeginInfo beginInfo{};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -258,14 +258,14 @@ namespace texture {
         }
 
         vkEndCommandBuffer(cmdBuffers[0]);
-        texObj.view = renderer::createImageView(device.getDevice(),
+        texObj.view = renderer::createImageView(device->getDevice(),
             texObj.image,
             VK_IMAGE_VIEW_TYPE_2D,
             VK_FORMAT_R8G8B8A8_SRGB,
             { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY },
             { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
 
-        texObj.sampler = texture::createSampler(device.getDevice(),
+        texObj.sampler = texture::createSampler(device->getDevice(),
             VK_FILTER_LINEAR,
             VK_FILTER_LINEAR,
             VK_SAMPLER_MIPMAP_MODE_LINEAR,
@@ -281,6 +281,169 @@ namespace texture {
             0.0,
             VK_BORDER_COLOR_INT_OPAQUE_BLACK,
             VK_FALSE);
+
+        return texObj;
+    }
+
+    TextureObject loadTexture(void* buffer, VkDeviceSize bufferSize, VkFormat format, uint32_t texWidth, uint32_t texHeight, Device* device, VkQueue copyQueue, VkFilter filter, VkImageUsageFlags imageUsageFlags, VkImageLayout imageLayout)
+    {
+        assert(buffer);
+
+        TextureObject texObj;
+        texObj.width = texWidth;
+        texObj.height = texHeight;
+
+        VkMemoryAllocateInfo memAllocInfo{};
+        memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        VkMemoryRequirements memReqs;
+
+        VkCommandBuffer copyCmd = renderer::createCommandBuffer(device->getDevice(), device->getCommandPool(), VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
+
+        VkBuffer stagingBuffer;
+        VkDeviceMemory stagingMemory;
+
+        stagingBuffer = buffer::createBuffer(
+            device->getDevice(),
+            bufferSize,
+            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            VK_SHARING_MODE_EXCLUSIVE
+            );
+
+        vkGetBufferMemoryRequirements(device->getDevice(), stagingBuffer, &memReqs);
+
+        memAllocInfo.allocationSize = memReqs.size;
+        memAllocInfo.memoryTypeIndex = device->findMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+        if (vkAllocateMemory(device->getDevice(), &memAllocInfo, nullptr, &stagingMemory) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to allocate staging buffer memory!");
+        }
+
+        if (vkBindBufferMemory(device->getDevice(), stagingBuffer, stagingMemory, 0) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to bind staging buffer memory");
+        }
+        
+        void* data;
+        memory::map(device->getDevice(), stagingMemory, 0, memReqs.size, (void**)&data);
+        memcpy(data, buffer, bufferSize);
+        memory::unmap(device->getDevice(), stagingMemory);
+
+        VkBufferImageCopy bufferCopyRegion{};
+        bufferCopyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        bufferCopyRegion.imageSubresource.mipLevel = 0;
+        bufferCopyRegion.imageSubresource.baseArrayLayer = 0;
+        bufferCopyRegion.imageSubresource.layerCount = 1;
+        bufferCopyRegion.imageExtent.width = texObj.width;
+        bufferCopyRegion.imageExtent.height = texObj.height;
+        bufferCopyRegion.imageExtent.depth = 1;
+        bufferCopyRegion.bufferOffset = 0;
+
+        VkBufferImageCopy copy_region;
+        copy_region.bufferOffset = 0;
+        copy_region.bufferRowLength = texObj.width;
+        copy_region.bufferImageHeight = texObj.height;
+        copy_region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        copy_region.imageSubresource.mipLevel = 0;
+        copy_region.imageSubresource.baseArrayLayer = 0;
+        copy_region.imageSubresource.layerCount = 1;
+        copy_region.imageOffset.x = 0;
+        copy_region.imageOffset.y = 0;
+        copy_region.imageOffset.z = 0;
+        copy_region.imageExtent.width = texObj.width;
+        copy_region.imageExtent.height = texObj.height;
+        copy_region.imageExtent.depth = 1;
+
+        texObj.image = renderer::createImage(
+            device->getDevice(),
+            0,
+            VK_IMAGE_TYPE_2D,
+            format,
+            { (uint32_t)texObj.width, (uint32_t)texObj.height, 1 },
+            1,
+            1,
+            VK_SAMPLE_COUNT_1_BIT,
+            texObj.needs_staging ? VK_IMAGE_TILING_OPTIMAL : VK_IMAGE_TILING_LINEAR,
+            texObj.needs_staging ? VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT : VK_IMAGE_USAGE_SAMPLED_BIT,
+            VK_SHARING_MODE_EXCLUSIVE,
+            texObj.needs_staging ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_PREINITIALIZED
+            );
+
+        vkGetImageMemoryRequirements(device->getDevice(), texObj.image, &memReqs);
+
+        memAllocInfo.allocationSize = memReqs.size;
+        memAllocInfo.memoryTypeIndex = device->findMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+        if (vkAllocateMemory(device->getDevice(), &memAllocInfo, nullptr, &texObj.bufferMemory) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to allocate buffer memory!");
+        }
+
+        if (vkBindImageMemory(device->getDevice(), texObj.image, texObj.bufferMemory, 0) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to bind image memory");
+        }
+
+        // Image barrier for optimal image (target)
+        // Optimal image will be used as destination for the copy
+        // Create an image barrier object
+        texture::setImageLayout(copyCmd,
+            texObj.image,
+            VK_IMAGE_ASPECT_COLOR_BIT,
+            VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT
+            );
+
+        // Copy mip levels from staging buffer
+        vkCmdCopyBufferToImage(
+            copyCmd,
+            stagingBuffer,
+            texObj.image,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            1,
+            &bufferCopyRegion
+            );
+
+        // Change texture image layout to shader read after all mip levels have been copied
+        texObj.imageLayout = imageLayout;
+        texture::setImageLayout(copyCmd,
+            texObj.image,
+            VK_IMAGE_ASPECT_COLOR_BIT,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            texObj.imageLayout,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT
+            );
+
+        //device->flushCommandBuffer(copyCmd, copyQueue);
+
+        vkFreeMemory(device->getDevice(), stagingMemory, nullptr);
+        vkDestroyBuffer(device->getDevice(), stagingBuffer, nullptr);
+        
+        texObj.view = renderer::createImageView(device->getDevice(),
+            texObj.image,
+            VK_IMAGE_VIEW_TYPE_2D,
+            format,
+            { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A },
+            { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
+
+        texObj.sampler = texture::createSampler(device->getDevice(),
+            filter,
+            filter,
+            VK_SAMPLER_MIPMAP_MODE_LINEAR,
+            VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            0.0,
+            VK_TRUE,
+            1.0f,
+            VK_FALSE,
+            VK_COMPARE_OP_NEVER,
+            0.0,
+            0.0,
+            VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+            VK_FALSE);
+
+        // Update descriptor image info member that can be used for setting up descriptor sets
+        texObj.descriptor.imageLayout = texObj.imageLayout;
+        texObj.descriptor.imageView = texObj.view;
+        texObj.descriptor.sampler = texObj.sampler;
 
         return texObj;
     }

@@ -42,13 +42,13 @@ namespace buffer {
         return buffer;
     }
     
-    Resource<VkBuffer> createBuffer(Device& device,
+    Resource<VkBuffer> createBuffer(Device* device,
         VkDeviceSize size,
         VkBufferUsageFlags usage,
         VkSharingMode sharingMode,
-        VkMemoryPropertyFlags memoryFlags) {
-    
-    
+        VkMemoryPropertyFlags memoryFlags,
+        void* data = nullptr
+        ) {
         VkBufferCreateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferInfo.size = size;
@@ -56,22 +56,43 @@ namespace buffer {
         bufferInfo.sharingMode = sharingMode;
     
         Resource<VkBuffer> buffer;
-        if (vkCreateBuffer(device.getDevice(), &bufferInfo, nullptr, &buffer.resource) != VK_SUCCESS) {
+        if (vkCreateBuffer(device->getDevice(), &bufferInfo, nullptr, &buffer.resource) != VK_SUCCESS) {
             throw std::runtime_error("failed to create buffer!");
         }
     
         VkMemoryRequirements memReqs;
-        vkGetBufferMemoryRequirements(device.getDevice(), buffer.resource, &memReqs);
-    
+        vkGetBufferMemoryRequirements(device->getDevice(), buffer.resource, &memReqs);
+        buffer.bufferSize = memReqs.size;
+
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memReqs.size;
-        allocInfo.memoryTypeIndex = device.findMemoryType(memReqs.memoryTypeBits, memoryFlags);
+        allocInfo.memoryTypeIndex = device->findMemoryType(memReqs.memoryTypeBits, memoryFlags);
     
-        if (vkAllocateMemory(device.getDevice(), &allocInfo, nullptr, &buffer.memory) != VK_SUCCESS) {
+        if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &buffer.memory) != VK_SUCCESS) {
             throw std::runtime_error("failed to allocate uniform buffer memory!");
         }
-        vkBindBufferMemory(device.getDevice(), buffer.resource, buffer.memory, 0);
+
+        // If a pointer to the buffer data has been passed, map the buffer and copy over the data
+        if (data != nullptr)
+        {
+            void* mapped;
+            memory::map(device->getDevice(), buffer.memory, 0, size, &mapped);
+            memcpy(mapped, data, size);
+            
+            // If host coherency hasn't been requested, do a manual flush to make writes visible
+            if ((memoryFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) == 0)
+            {
+                VkMappedMemoryRange mappedRange{};
+                mappedRange.memory = buffer.memory;
+                mappedRange.offset = 0;
+                mappedRange.size = size;
+                vkFlushMappedMemoryRanges(device->getDevice(), 1, &mappedRange);
+            }
+            memory::unmap(device->getDevice(), buffer.memory);
+        }
+
+        vkBindBufferMemory(device->getDevice(), buffer.resource, buffer.memory, 0);
     
         return buffer;
     }
