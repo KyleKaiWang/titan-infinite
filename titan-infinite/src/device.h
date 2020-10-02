@@ -91,7 +91,7 @@ struct Device {
 
         createSwapChain(m_physicalDevice, m_device, m_surface);
         createCommandPool(m_device, vkHelper::findQueueFamilies(m_physicalDevice, m_surface).graphicsFamily.value());
-        m_commandBuffers =  renderer::allocateCommandBuffers(m_device, m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, (uint32_t)m_images.size());
+        m_commandBuffers =  renderer::createCommandBuffers(m_device, m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, (uint32_t)m_images.size());
 
         //createDescriptorPool(m_device);
     }
