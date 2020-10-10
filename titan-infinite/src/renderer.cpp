@@ -181,8 +181,9 @@ namespace renderer {
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
         pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(descriptorSetLayout.size());
-        pipelineLayoutInfo.pushConstantRangeCount = 0;
+        pipelineLayoutInfo.pushConstantRangeCount = static_cast<uint32_t>(pushConstantRanges.size());
         pipelineLayoutInfo.pSetLayouts = descriptorSetLayout.data();
+        pipelineLayoutInfo.pPushConstantRanges = pushConstantRanges.data();
 
         VkPipelineLayout pipelineLayout;
         if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
@@ -330,6 +331,12 @@ namespace renderer {
             throw std::runtime_error("failed to allocate descriptor sets!");
         }
         return descriptorSets;
+    }
+
+    VkDescriptorSet createDescriptorSet(const VkDevice& device, const VkDescriptorPool& descriptorPool, const VkDescriptorSetLayout& descriptorSetLayout) {
+        
+        std::vector<VkDescriptorSet> descriptorSet{ createDescriptorSets(device, descriptorPool, { descriptorSetLayout }) };       
+        return descriptorSet[0];
     }
 
     std::vector<VkCommandBuffer> createCommandBuffers(const VkDevice& device, const VkCommandPool& commandPool, VkCommandBufferLevel level, uint32_t commandBufferCount) {

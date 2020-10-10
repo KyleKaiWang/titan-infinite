@@ -34,15 +34,9 @@
 #include "window.h"
 #include "buffer.h"
 #include "texture.h"
-#include "mesh.h"
+#include "model.h"
 
-struct UniformBufferObject {
-    glm::mat4 model;
-    glm::mat4 view;
-    glm::mat4 proj;
-    glm::mat4 sceneRotationMatrix;
-    glm::vec4 lightPos = glm::vec4(5.0f, 5.0f, -5.0f, 1.0f);
-};
+
 
 class Application {
 public:
@@ -66,36 +60,49 @@ private:
     VkRenderPass m_renderPass;
     std::vector<VkFramebuffer> m_framebuffers;
 
-    std::vector<VkDescriptorSet> m_descriptorSets;
     VkDescriptorSet m_descriptorSet;
-    VkDescriptorSetLayout m_descriptorSetLayout;
     VkPipelineLayout m_pipelineLayout;
     VkPipeline m_graphicsPipeline;
     VkPipelineCache m_pipelineCache;
 
     // glTF
-    struct DemoModel {
-        vkglTF::Model* glTF;
-        VkPipeline* pipeline;
-    };
-    std::vector<DemoModel> demoModels;
+    VulkanglTFModel glTFModel;
 
-    UniformBufferObject uboVS;
+    struct Pipelines
+    {
+        VkPipeline solid;
+        VkPipeline wireframe = VK_NULL_HANDLE;
+    } pipelines;
 
-    struct {
-        Resource<VkBuffer> meshVS;
-    } uniformData;
+    bool wireframe = false;
 
+    struct DescriptorSetLayouts
+    {
+        VkDescriptorSetLayout matrices;
+        VkDescriptorSetLayout textures;
+        VkDescriptorSetLayout jointMatrices;
+    } descriptorSetLayouts;
+
+    struct UniformBufferObject {
+        Resource<VkBuffer> buffer;
+        struct Values {
+            glm::mat4 view;
+            glm::mat4 proj;
+            glm::mat4 sceneRotationMatrix;
+            glm::vec4 lightPos = glm::vec4(5.0f, 5.0f, 5.0f, 1.0f);
+        }values;
+    }shaderData;
+    
     struct
     {
         TextureObject skybox;
     } textures;
 
-    struct {
-        VkPipeline logos;
-        VkPipeline models;
-        VkPipeline skybox;
-    } pipelines;
+    //struct {
+    //    VkPipeline logos;
+    //    VkPipeline models;
+    //    VkPipeline skybox;
+    //} pipelines;
 
     void initResource() {
         m_window.create(WIDTH, HEIGHT);
@@ -171,6 +178,12 @@ private:
             m_renderPass = renderer::createRenderPass(m_device->getDevice(), attachmentDesc, subpassDesc, dependencies);
         }
 
+        {
+            VkPipelineCacheCreateInfo pipelineCacheCreateInfo{};
+            pipelineCacheCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+            vkCreatePipelineCache(m_device->getDevice(), &pipelineCacheCreateInfo, nullptr, &m_pipelineCache);
+        }
+
         // Framebuffers
         {
             std::vector<VkImageView> imageViews = m_device->getSwapChainimageViews();
@@ -189,49 +202,156 @@ private:
     }
 
     void loadAssets() {
-        // Models
-        std::vector<std::string> modelFiles = { "DamagedHelmet/glTF-Embedded/DamagedHelmet.gltf" };
-        std::vector<VkPipeline*> modelPipelines = { &pipelines.logos, &pipelines.models, &pipelines.models, &pipelines.skybox };
-        for (auto i = 0; i < modelFiles.size(); i++) {
-            DemoModel model;
-            const uint32_t glTFLoadingFlags = vkglTF::FileLoadingFlags::PreTransformVertices | vkglTF::FileLoadingFlags::PreMultiplyVertexColors | vkglTF::FileLoadingFlags::FlipY;
-            model.pipeline = modelPipelines[i];
-            model.glTF = new vkglTF::Model();
-            model.glTF->loadFromFile("data/models/" + modelFiles[i], m_device, m_device->getGraphicsQueue(), glTFLoadingFlags);
-            demoModels.push_back(model);
+        tinygltf::Model    glTFInput;
+        tinygltf::TinyGLTF gltfContext;
+        std::string        error, warning;
+        bool fileLoaded = gltfContext.LoadASCIIFromFile(&glTFInput, &error, &warning, "data/models/glTF-Embedded/CesiumMan.gltf");
+
+        // Pass some Vulkan resources required for setup and rendering to the glTF model loading class
+        glTFModel.device = m_device;
+        glTFModel.copyQueue = m_device->getGraphicsQueue();
+
+        std::vector<uint32_t>                indexBuffer;
+        std::vector<VulkanglTFModel::Vertex> vertexBuffer;
+
+        if (fileLoaded)
+        {
+            glTFModel.loadImages(glTFInput);
+            glTFModel.loadMaterials(glTFInput);
+            glTFModel.loadTextures(glTFInput);
+            const tinygltf::Scene& scene = glTFInput.scenes[0];
+            for (size_t i = 0; i < scene.nodes.size(); i++)
+            {
+                const tinygltf::Node node = glTFInput.nodes[scene.nodes[i]];
+                glTFModel.loadNode(node, glTFInput, nullptr, scene.nodes[i], indexBuffer, vertexBuffer);
+            }
+            glTFModel.loadSkins(glTFInput);
+            glTFModel.loadAnimations(glTFInput);
+            // Calculate initial pose
+            for (auto node : glTFModel.nodes)
+            {
+                glTFModel.updateJoints(node);
+            }
         }
+        else
+        {
+            throw("Could not open the glTF file.\n\nThe file is part of the additional asset pack.\n\nRun \"download_assets.py\" in the repository root to download the latest version.", -1);
+            return;
+        }
+
+        // Create and upload vertex and index buffer
+        size_t vertexBufferSize = vertexBuffer.size() * sizeof(VulkanglTFModel::Vertex);
+        size_t indexBufferSize = indexBuffer.size() * sizeof(uint32_t);
+        glTFModel.indices.count = static_cast<uint32_t>(indexBuffer.size());
+
+        struct StagingBuffer
+        {
+            VkBuffer       buffer;
+            VkDeviceMemory memory;
+        } vertexStaging, indexStaging;
+
+        // Create host visible staging buffers (source)
+        buffer::createBuffer(
+            m_device,
+            vertexBufferSize,
+            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            VK_SHARING_MODE_EXCLUSIVE,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            &vertexStaging.buffer,
+            &vertexStaging.memory,
+            vertexBuffer.data());
+
+        // Index data
+        buffer::createBuffer(
+            m_device,
+            indexBufferSize,
+            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            VK_SHARING_MODE_EXCLUSIVE,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            &indexStaging.buffer,
+            &indexStaging.memory,
+            indexBuffer.data());
+
+        // Create device local buffers (target)
+        buffer::createBuffer(
+            m_device,
+            vertexBufferSize,
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            VK_SHARING_MODE_EXCLUSIVE,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            &glTFModel.vertices.buffer,
+            &glTFModel.vertices.memory);
+
+
+        buffer::createBuffer(
+            m_device,
+            indexBufferSize,
+            VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            VK_SHARING_MODE_EXCLUSIVE,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            &glTFModel.indices.buffer,
+            &glTFModel.indices.memory);
+
+        // Copy data from staging buffers (host) do device local buffer (gpu)
+        VkCommandBuffer copyCmd = renderer::createCommandBuffer(m_device->getDevice(), m_device->getCommandPool(), VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+        VkBufferCopy    copyRegion = {};
+        copyRegion.size = vertexBufferSize;
+        vkCmdCopyBuffer(copyCmd, vertexStaging.buffer, glTFModel.vertices.buffer, 1, &copyRegion);
+        copyRegion.size = indexBufferSize;
+        vkCmdCopyBuffer(copyCmd, indexStaging.buffer, glTFModel.indices.buffer, 1, &copyRegion);
+        renderer::flushCommandBuffer(m_device->getDevice(), copyCmd, m_device->getGraphicsQueue(), m_device->getCommandPool(), true);
+
+        // Free staging resources
+        vkDestroyBuffer(m_device->getDevice(), vertexStaging.buffer, nullptr);
+        vkFreeMemory(m_device->getDevice(), vertexStaging.memory, nullptr);
+        vkDestroyBuffer(m_device->getDevice(), indexStaging.buffer, nullptr);
+        vkFreeMemory(m_device->getDevice(), indexStaging.memory, nullptr);
+
         // Textures
         //TODO : Cubemap loading
-        textures.skybox = texture::loadTexture("data/textures/Checkerboard.png", m_device, 4);
+        //textures.skybox = texture::loadTexture("data/textures/Checkerboard.png", VK_FORMAT_R8G8B8A8_UNORM, m_device, 4);
     }
 
     void initUniformBuffers() {
         // Vertex shader uniform buffer block
-        uniformData.meshVS = buffer::createBuffer(
+        shaderData.buffer = buffer::createBuffer(
             m_device,
-            sizeof(uboVS),
+            sizeof(shaderData.values),
             VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
             VK_SHARING_MODE_EXCLUSIVE,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
             );
-        memory::map(m_device->getDevice(), uniformData.meshVS.memory, 0, VK_WHOLE_SIZE, &uniformData.meshVS.mapped);
+        memory::map(m_device->getDevice(), shaderData.buffer.memory, 0, VK_WHOLE_SIZE, &shaderData.buffer.mapped);
         updateUniformBuffer();
     }
 
     void updateUniformBuffer() {
-        uboVS.model = glm::mat4(1.0f);
-
         glm::mat4 sceneRotationMatrix = glm::mat4(1.0f);
         sceneRotationMatrix = glm::rotate(sceneRotationMatrix, glm::radians(m_window.getSceneSettings().pitch), glm::vec3(1.0f, 0.0f, 0.0f));
         sceneRotationMatrix = glm::rotate(sceneRotationMatrix, glm::radians(m_window.getSceneSettings().yaw), glm::vec3(0.0f, 1.0f, 0.0f));
         sceneRotationMatrix = glm::rotate(sceneRotationMatrix, glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
-        uboVS.view = glm::lookAt(glm::vec3(0.0f, 0.0f, m_window.getCamera().distance), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-        uboVS.proj = glm::perspective(m_window.getCamera().fov, m_device->getSwapChainExtent().width / (float)m_device->getSwapChainExtent().height, 0.1f, 10.0f);
-        uboVS.proj[1][1] *= -1;
-        uboVS.sceneRotationMatrix = sceneRotationMatrix;
+        shaderData.values.view = glm::lookAt(glm::vec3(0.0f, 0.0f, m_window.getCamera().distance), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        shaderData.values.proj = glm::perspective(m_window.getCamera().fov, m_device->getSwapChainExtent().width / (float)m_device->getSwapChainExtent().height, 0.1f, 10.0f);
+        shaderData.values.proj[1][1] *= -1;
+        shaderData.values.sceneRotationMatrix = sceneRotationMatrix;
         
-        memcpy(uniformData.meshVS.mapped, &uboVS, sizeof(uboVS));
+        memcpy(shaderData.buffer.mapped, &shaderData.values, sizeof(shaderData.values));
+    }
+
+    void initDescriptorPool()
+    {
+        std::vector<VkDescriptorPoolSize> poolSizes =
+        {
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 },
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<uint32_t>(glTFModel.images.size()) },
+            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, static_cast<uint32_t>(glTFModel.skins.size()) }
+        };
+        m_device->createDescriptorPool(
+            m_device->getDevice(),
+            poolSizes,
+            static_cast<uint32_t>(glTFModel.images.size()) + static_cast<uint32_t>(glTFModel.skins.size()) + 1
+        );
     }
 
     void initDescriptorSetLayout() {
@@ -243,56 +363,90 @@ private:
             uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
+            DescriptorSetLayoutBinding jointLayoutBinding{};
+            jointLayoutBinding.binding = 0;
+            jointLayoutBinding.descriptorCount = 1;
+            jointLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            jointLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+            
             DescriptorSetLayoutBinding samplerLayoutBinding{};
-            samplerLayoutBinding.binding = 1;
+            samplerLayoutBinding.binding = 0;
             samplerLayoutBinding.descriptorCount = 1;
             samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-            std::vector<DescriptorSetLayoutBinding> descriptorSetLayoutBindings{ uboLayoutBinding, samplerLayoutBinding };
 
-            m_descriptorSetLayout = renderer::createDescriptorSetLayout(m_device->getDevice(), descriptorSetLayoutBindings);
+            descriptorSetLayouts.matrices = renderer::createDescriptorSetLayout(m_device->getDevice(), { uboLayoutBinding });
+            descriptorSetLayouts.jointMatrices = renderer::createDescriptorSetLayout(m_device->getDevice(), { jointLayoutBinding });
+            descriptorSetLayouts.textures = renderer::createDescriptorSetLayout(m_device->getDevice(), { samplerLayoutBinding });
 
             VkPushConstantRange pushConstantRange{};
             pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
             pushConstantRange.size = sizeof(glm::mat4);
             pushConstantRange.offset = 0;
 
-            m_pipelineLayout = renderer::createPipelineLayout(m_device->getDevice(), { m_descriptorSetLayout }, { pushConstantRange });
+            m_pipelineLayout = renderer::createPipelineLayout(m_device->getDevice(), { descriptorSetLayouts.matrices, descriptorSetLayouts.jointMatrices, descriptorSetLayouts.textures }, { pushConstantRange });
         }
     }
 
     void initDescriptorSet()
     {
-        m_descriptorSets = renderer::createDescriptorSets(m_device->getDevice(), m_device->getDescriptorPool(), { m_descriptorSetLayout });
-        m_descriptorSet = m_descriptorSets[0];
+        {
+            m_descriptorSet = renderer::createDescriptorSet(m_device->getDevice(), m_device->getDescriptorPool(), descriptorSetLayouts.matrices);
+            VkWriteDescriptorSet descriptorWrite{};
+            descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrite.dstSet = m_descriptorSet;
+            descriptorWrite.dstBinding = 0;
+            descriptorWrite.dstArrayElement = 0;
+            descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            descriptorWrite.descriptorCount = 1;
+            descriptorWrite.pBufferInfo = &shaderData.buffer.descriptor;
+            vkUpdateDescriptorSets(m_device->getDevice(), 1, &descriptorWrite, 0, nullptr);
+        }
 
-        std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
-        
-        // Binding 0 : Vertex shader uniform buffer
-        descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[0].dstSet = m_descriptorSet;
-        descriptorWrites[0].dstBinding = 0;
-        descriptorWrites[0].dstArrayElement = 0;
-        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descriptorWrites[0].descriptorCount = 1;
-        descriptorWrites[0].pBufferInfo = &uniformData.meshVS.descriptor;
+        for (auto& skin : glTFModel.skins)
+        {
+            skin.descriptorSet = renderer::createDescriptorSet(m_device->getDevice(), m_device->getDescriptorPool(), descriptorSetLayouts.jointMatrices);
+            VkWriteDescriptorSet descriptorWrite{};
+            descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrite.dstSet = skin.descriptorSet;
+            descriptorWrite.dstBinding = 0;
+            descriptorWrite.dstArrayElement = 0;
+            descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            descriptorWrite.descriptorCount = 1;
+            descriptorWrite.pBufferInfo = &skin.ssbo.descriptor;
+            vkUpdateDescriptorSets(m_device->getDevice(), 1, &descriptorWrite, 0, nullptr);
+        }
 
-        // Binding 1 : Fragment shader image sampler
-        descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[1].dstSet = m_descriptorSet;
-        descriptorWrites[1].dstBinding = 1;
-        descriptorWrites[1].dstArrayElement = 0;
-        descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        descriptorWrites[1].descriptorCount = 1;
-        descriptorWrites[1].pImageInfo = &textures.skybox.descriptor;
-
-        vkUpdateDescriptorSets(m_device->getDevice(), descriptorWrites.size(), descriptorWrites.data(), 0, NULL);
+        for (auto& image : glTFModel.images)
+        {
+            image.descriptorSet = renderer::createDescriptorSet(m_device->getDevice(), m_device->getDescriptorPool(), descriptorSetLayouts.textures);
+            VkWriteDescriptorSet descriptorWrite{};
+            descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrite.dstSet = image.descriptorSet;
+            descriptorWrite.dstBinding = 0;
+            descriptorWrite.dstArrayElement = 0;
+            descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            descriptorWrite.descriptorCount = 1;
+            descriptorWrite.pImageInfo = &image.texture.descriptor;
+            vkUpdateDescriptorSets(m_device->getDevice(), 1, &descriptorWrite, 0, nullptr);
+        }
     }
 
     void initPipelines()
     {
-        auto vertexInput = vkglTF::Vertex::getVertexInputState({ vkglTF::VertexComponent::Position, vkglTF::VertexComponent::Normal, vkglTF::VertexComponent::UV, vkglTF::VertexComponent::Color });
+        VertexInputState vertexInputState = { 
+            { { 0, sizeof(VulkanglTFModel::Vertex), VK_VERTEX_INPUT_RATE_VERTEX } },
+            
+            { {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VulkanglTFModel::Vertex, pos)},
+            {1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VulkanglTFModel::Vertex, normal)},
+            {2, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VulkanglTFModel::Vertex, uv)},
+            {3, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VulkanglTFModel::Vertex, color)},
+            
+            // POI: Per-Vertex Joint indices and weights are passed to the vertex shader
+            {4, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(VulkanglTFModel::Vertex, jointIndices)},
+            {5, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(VulkanglTFModel::Vertex, jointWeights)} }
+        };
 
         InputAssemblyState inputAssembly{};
         inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
@@ -345,34 +499,16 @@ private:
         dynamicState.pDynamicStates = dynamicStates.data();
         dynamicState.dynamicStateCount = 0;
 
-        // Default mesh rendering pipeline
+        // Solid rendering pipeline
         std::vector<ShaderStage> shaderStages_mesh = renderer::createShader(m_device->getDevice(), "data/shaders/mesh.vert.spv", "data/shaders/mesh.frag.spv");
-        pipelines.models = renderer::createGraphicsPipeline(m_device->getDevice(), m_pipelineCache, shaderStages_mesh, *vertexInput, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_renderPass);
+        pipelines.solid = renderer::createGraphicsPipeline(m_device->getDevice(), m_pipelineCache, shaderStages_mesh, vertexInputState, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_renderPass);
 
-        // Pipeline for the logos
-        std::vector<ShaderStage> shaderStages_logos = renderer::createShader(m_device->getDevice(), "data/shaders/logo.vert.spv", "data/shaders/logo.frag.spv");
-        pipelines.logos = renderer::createGraphicsPipeline(m_device->getDevice(), m_pipelineCache, shaderStages_logos, *vertexInput, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_renderPass);
-
-        // Pipeline for the sky sphere
-        rasterizer.cullMode = VK_CULL_MODE_FRONT_BIT;
-        depthStencil.depthWriteEnable = VK_FALSE;
-        std::vector<ShaderStage> shaderStages_skybox = renderer::createShader(m_device->getDevice(), "data/shaders/skybox.vert.spv", "data/shaders/skybox.frag.spv");
-        pipelines.skybox = renderer::createGraphicsPipeline(m_device->getDevice(), m_pipelineCache, shaderStages_skybox, *vertexInput, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_renderPass);
-    }
-
-    void initDescriptorPool()
-    {
-        // Example uses one ubo and one image sampler
-        std::vector<VkDescriptorPoolSize> poolSizes =
-        {
-            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2 },
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 }
-        };
-        m_device->createDescriptorPool(
-            m_device->getDevice(),
-            poolSizes,
-            2
-            );
+        // Wire frame rendering pipeline
+        if (wireframe) {
+            rasterizer.polygonMode = VK_POLYGON_MODE_LINE;
+            rasterizer.lineWidth = 1.0f;
+            pipelines.wireframe= renderer::createGraphicsPipeline(m_device->getDevice(), m_pipelineCache, shaderStages_mesh, vertexInputState, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_renderPass);            
+        }
     }
 
     void mainLoop() {
@@ -449,20 +585,11 @@ private:
             if (vkBeginCommandBuffer(m_device->m_commandBuffers[i], &beginInfo) != VK_SUCCESS) {
                 throw std::runtime_error("failed to begin recording command buffer!");
             }
-
             vkCmdBeginRenderPass(m_device->m_commandBuffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-            vkCmdBindDescriptorSets(m_device->m_commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, 1, &m_device->m_descriptorSets[i], 0, nullptr);
-
-            vkCmdBindDescriptorSets(m_device->m_commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, 1, m_descriptorSets.data(), 0, NULL);
-
-            for (auto model : demoModels) {
-                vkCmdBindPipeline(m_device->m_commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, *model.pipeline);
-                model.glTF->draw(m_device->m_commandBuffers[i]);
-            }
-
+            vkCmdBindDescriptorSets(m_device->m_commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, 1, &m_descriptorSet, 0, nullptr);
+            vkCmdBindPipeline(m_device->m_commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, wireframe ? pipelines.wireframe : pipelines.solid);
+            glTFModel.draw(m_device->m_commandBuffers[i], m_pipelineLayout);
             vkCmdEndRenderPass(m_device->m_commandBuffers[i]);
-
             vkEndCommandBuffer(m_device->m_commandBuffers[i]);
         }
     }
@@ -549,7 +676,11 @@ private:
     }
 
     void cleanup() {
-        vkDestroyDescriptorSetLayout(m_device->getDevice(), m_descriptorSetLayout, nullptr);
+        vkDestroyDescriptorSetLayout(m_device->getDevice(), descriptorSetLayouts.matrices, nullptr);
+        vkDestroyDescriptorSetLayout(m_device->getDevice(), descriptorSetLayouts.textures, nullptr);
+        vkDestroyDescriptorSetLayout(m_device->getDevice(), descriptorSetLayouts.jointMatrices, nullptr);
+        vkDestroyBuffer(m_device->getDevice(), shaderData.buffer.resource, nullptr);
+
         cleanupSwapChain();
         m_device->destroy();
         delete m_device;

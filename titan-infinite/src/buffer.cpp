@@ -85,7 +85,6 @@ namespace buffer {
                 buffer::flush(device->getDevice(), buffer.memory, size, 0);
             }
             memory::unmap(device->getDevice(), buffer.memory);
-            buffer.mapped = nullptr;
         }
         initDescriptor(buffer.bufferSize, 0, buffer);
 
