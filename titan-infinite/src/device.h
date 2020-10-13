@@ -36,6 +36,8 @@ struct SwapChainSupportDetails {
 };
 
 struct Device {
+    Device();
+    ~Device();
 
     // SwapChain
     VkSwapchainKHR m_swapChain;

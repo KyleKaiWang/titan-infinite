@@ -7,6 +7,15 @@
 #include "pch.h"
 #include "device.h"
 
+Device::Device()
+{
+}
+
+Device::~Device()
+{
+    destroy();
+}
+
 void Device::create(GLFWwindow* window) {
     m_window = window;
     createInstance();

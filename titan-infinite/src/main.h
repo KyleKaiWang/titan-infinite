@@ -14,6 +14,7 @@
 #define VK_USE_PLATFORM_WIN32_KHR
 #endif
 
+#include <windows.h>
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_ENABLE_EXPERIMENTAL
@@ -40,6 +41,9 @@
 
 class Application {
 public:
+    Application() {}
+    ~Application() {}
+
     void run() {
         initResource();
         mainLoop();
@@ -53,7 +57,6 @@ private:
     VkImage m_depthImage;
     VkDeviceMemory m_depthImageMemory;
     VkImageView m_depthImageView;
-    std::vector<Resource<VkBuffer>> m_uniformBuffers;
 
     size_t m_currentFrame = 0;
 
@@ -62,7 +65,6 @@ private:
 
     VkDescriptorSet m_descriptorSet;
     VkPipelineLayout m_pipelineLayout;
-    VkPipeline m_graphicsPipeline;
     VkPipelineCache m_pipelineCache;
 
     // glTF
@@ -98,11 +100,11 @@ private:
         TextureObject skybox;
     } textures;
 
-    //struct {
-    //    VkPipeline logos;
-    //    VkPipeline models;
-    //    VkPipeline skybox;
-    //} pipelines;
+    // Mesuring frame time
+    float frameTimer = 1.0f;
+    uint32_t frameCounter = 0;
+    uint32_t lastFPS = 0;
+    std::chrono::time_point<std::chrono::high_resolution_clock> lastTimestamp;
 
     void initResource() {
         m_window.create(WIDTH, HEIGHT);
@@ -511,53 +513,6 @@ private:
         }
     }
 
-    void mainLoop() {
-        while (!m_window.getWindowShouldClose()) {
-            // Poll for user input.
-            glfwPollEvents();
-            drawFrame();
-        }
-        vkDeviceWaitIdle(m_device->getDevice());
-    }
-
-    void render() {
-        const VkDeviceSize zeroOffset = 0;
-        VkCommandBuffer commandBuffer = m_device->getCommandBuffers()[m_currentFrame];
-        VkFramebuffer framebuffer = m_framebuffers[m_currentFrame];
-
-        // Begin recording current frame command buffer.
-        {
-            VkCommandBufferBeginInfo beginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
-            beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-            vkResetCommandBuffer(commandBuffer, 0);
-            vkBeginCommandBuffer(commandBuffer, &beginInfo);
-        }
-
-        // Begin render pass
-        {
-            std::array<VkClearValue, 2> clearValues = {};
-            clearValues[1].depthStencil.depth = 1.0f;
-
-            VkRenderPassBeginInfo beginInfo = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
-            beginInfo.renderPass = m_renderPass;
-            beginInfo.framebuffer = framebuffer;
-            beginInfo.renderArea.offset = { 0, 0 };
-            beginInfo.renderArea.extent = m_device->getSwapChainExtent();
-            beginInfo.clearValueCount = (uint32_t)clearValues.size();
-            beginInfo.pClearValues = clearValues.data();
-
-            // Begin in main draw subpass
-            vkCmdBeginRenderPass(commandBuffer, &beginInfo, VK_SUBPASS_CONTENTS_INLINE);
-        }
-
-        vkCmdEndRenderPass(commandBuffer);
-
-        if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
-            throw std::runtime_error("failed to record command buffer!");
-        }
-    }
-
     void buildCommandBuffers()
     {
         VkCommandBufferBeginInfo beginInfo{};
@@ -581,7 +536,7 @@ private:
         for (int32_t i = 0; i < m_device->getCommandBuffers().size(); ++i)
         {
             renderPassInfo.framebuffer = m_framebuffers[i];
-            
+
             if (vkBeginCommandBuffer(m_device->m_commandBuffers[i], &beginInfo) != VK_SUCCESS) {
                 throw std::runtime_error("failed to begin recording command buffer!");
             }
@@ -592,6 +547,34 @@ private:
             vkCmdEndRenderPass(m_device->m_commandBuffers[i]);
             vkEndCommandBuffer(m_device->m_commandBuffers[i]);
         }
+    }
+
+    void mainLoop() {
+
+        while (!m_window.getWindowShouldClose()) {
+            // Poll for user input.
+            glfwPollEvents();
+            render();
+        }
+        vkDeviceWaitIdle(m_device->getDevice());
+    }
+
+    void render() {
+        auto tStart = std::chrono::high_resolution_clock::now();
+        drawFrame();
+        frameCounter++;
+        auto tEnd = std::chrono::high_resolution_clock::now();
+        auto tDiff = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
+        frameTimer = (float)tDiff / 1000.0f;
+    
+       float fpsTimer = (float)(std::chrono::duration<double, std::milli>(tEnd - lastTimestamp).count());
+       if (fpsTimer > 1000.0f)
+       {
+           lastFPS = static_cast<uint32_t>((float)frameCounter * (1000.0f / fpsTimer));
+       }
+       frameCounter = 0;
+       lastTimestamp = tEnd;
+       
     }
 
     void drawFrame() {
@@ -609,7 +592,7 @@ private:
         }
 
         updateUniformBuffer();
-
+        glTFModel.updateAnimation(frameTimer);
         if (m_device->m_imagesInFlight[imageIndex] != VK_NULL_HANDLE) {
             vkWaitForFences(m_device->getDevice(), 1, &m_device->m_imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX);
         }
@@ -659,29 +642,17 @@ private:
         m_currentFrame = (m_currentFrame + 1) % 2;
     }
 
-    void cleanupSwapChain() {
-        for (auto framebuffer : m_framebuffers) {
-            vkDestroyFramebuffer(m_device->getDevice(), framebuffer, nullptr);
-        }
-        vkDestroyPipeline(m_device->getDevice(), m_graphicsPipeline, nullptr);
-        vkDestroyPipelineLayout(m_device->getDevice(), m_pipelineLayout, nullptr);
-        vkDestroyRenderPass(m_device->getDevice(), m_renderPass, nullptr);
-        m_device->destroyCommandPool();
-        m_device->destroyDescriptorPool();
-        for (size_t i = 0; i < m_device->getSwapChainimages().size(); ++i) {
-            vkDestroyBuffer(m_device->getDevice(), m_uniformBuffers[i].resource, nullptr);
-            vkFreeMemory(m_device->getDevice(), m_uniformBuffers[i].memory, nullptr);
-        }
-        m_device->destroy();
-    }
-
     void cleanup() {
         vkDestroyDescriptorSetLayout(m_device->getDevice(), descriptorSetLayouts.matrices, nullptr);
         vkDestroyDescriptorSetLayout(m_device->getDevice(), descriptorSetLayouts.textures, nullptr);
         vkDestroyDescriptorSetLayout(m_device->getDevice(), descriptorSetLayouts.jointMatrices, nullptr);
         vkDestroyBuffer(m_device->getDevice(), shaderData.buffer.resource, nullptr);
+        for (auto framebuffer : m_framebuffers) {
+            vkDestroyFramebuffer(m_device->getDevice(), framebuffer, nullptr);
+        }
+        vkDestroyPipelineLayout(m_device->getDevice(), m_pipelineLayout, nullptr);
+        vkDestroyRenderPass(m_device->getDevice(), m_renderPass, nullptr);
 
-        cleanupSwapChain();
         m_device->destroy();
         delete m_device;
         m_window.destroy();
