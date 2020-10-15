@@ -153,6 +153,15 @@ namespace renderer {
         return shaderStages;
     }
 
+    ShaderStage createShader(const VkDevice& device, const std::string& computeShaderFile) {
+        ShaderStage computeShaderStage{};
+        computeShaderStage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        computeShaderStage.module = renderer::createShaderModule(device, vkHelper::readFile(computeShaderFile));
+        computeShaderStage.pName = "main";
+
+        return computeShaderStage;
+    }
+
     VkDescriptorSetLayout createDescriptorSetLayout(const VkDevice& device, const std::vector<DescriptorSetLayoutBinding>& descriptorSetLayoutBindings) {
         std::vector<VkDescriptorSetLayoutBinding> convertedBindings;
         for (const DescriptorSetLayoutBinding& binding : descriptorSetLayoutBindings) {
@@ -318,6 +327,31 @@ namespace renderer {
         }
         return pipeline;
     }
+    
+    VkPipeline createComputePipeline(const VkDevice& device, const std::string& computeShaderFile, VkPipelineLayout layout, const VkSpecializationInfo* specializationInfo)
+    {
+        ShaderStage computeShader = renderer::createShader(device, computeShaderFile);
+
+        VkPipelineShaderStageCreateInfo pipelineShaderStage{};
+        pipelineShaderStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        pipelineShaderStage.module = computeShader.module;
+        pipelineShaderStage.stage = computeShader.stage;
+        pipelineShaderStage.pName = computeShader.pName.c_str();
+        pipelineShaderStage.pSpecializationInfo = specializationInfo;
+
+        VkComputePipelineCreateInfo createInfo = { VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO };
+        createInfo.stage = pipelineShaderStage;
+        createInfo.layout = layout;
+
+        VkPipeline pipeline;
+        if (vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &createInfo, nullptr, &pipeline) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create compute pipeline");
+        }
+
+        vkDestroyShaderModule(device, computeShader.module, nullptr);
+        return pipeline;
+    }
+
 
     std::vector<VkDescriptorSet> createDescriptorSets(const VkDevice& device, const VkDescriptorPool& descriptorPool, const std::vector<VkDescriptorSetLayout>& descriptorSetLayout) {
         VkDescriptorSetAllocateInfo allocInfo{};

@@ -92,8 +92,8 @@ namespace renderer {
         VkSampleCountFlags samples,
         VkImageTiling tiling,
         VkImageUsageFlags usage,
-        VkSharingMode sharingMode,
-        VkImageLayout initialLayout);
+        VkSharingMode sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        VkImageLayout initialLayout = VK_IMAGE_LAYOUT_UNDEFINED);
 
     VkImageView createImageView(const VkDevice& device,
         VkImage image,
@@ -115,8 +115,10 @@ namespace renderer {
 
     VkShaderModule createShaderModule(const VkDevice& device, const std::vector<char>& code);
     std::vector<ShaderStage> createShader(const VkDevice& device, const std::string& vertexShaderFile, const std::string& pixelShaderFile);
+    ShaderStage createShader(const VkDevice& device, const std::string& computeShaderFile);
     VkDescriptorSetLayout createDescriptorSetLayout(const VkDevice& device, const std::vector<DescriptorSetLayoutBinding>& descriptorSetLayoutBindings);
     VkPipelineLayout createPipelineLayout(const VkDevice& device, const std::vector<VkDescriptorSetLayout>& descriptorSetLayout, const std::vector<VkPushConstantRange>& pushConstantRanges);
+    
     VkPipeline createGraphicsPipeline(
         const VkDevice& device,
         VkPipelineCache pipelineCache,
@@ -132,12 +134,11 @@ namespace renderer {
         const VkPipelineLayout& pipelineLayout,
         const VkRenderPass& renderPass);
 
+    VkPipeline createComputePipeline(const VkDevice& device, const std::string& computeShaderFile, VkPipelineLayout layout, const VkSpecializationInfo* specializationInfo);
     std::vector<VkDescriptorSet> createDescriptorSets(const VkDevice& device, const VkDescriptorPool& descriptorPool, const std::vector<VkDescriptorSetLayout>& descriptorSetLayout);
     VkDescriptorSet createDescriptorSet(const VkDevice& device, const VkDescriptorPool& descriptorPool, const VkDescriptorSetLayout& descriptorSetLayout);
     std::vector<VkCommandBuffer> createCommandBuffers(const VkDevice& device, const VkCommandPool& commandPool, VkCommandBufferLevel level, uint32_t commandBufferCount);
-
     VkCommandBuffer createCommandBuffer(const VkDevice& device, const VkCommandPool& commandPool, VkCommandBufferLevel level, bool begin);
-
     void submitCommandBuffer(const VkQueue& queue, const VkSubmitInfo* submitInfo, const VkFence& fence);
     void flushCommandBuffer(const VkDevice& device, const VkCommandBuffer& commandBuffer, const VkQueue& queue, const VkCommandPool& pool, bool free);
 };
