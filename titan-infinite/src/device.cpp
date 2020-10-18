@@ -16,17 +16,17 @@ Device::~Device()
     destroy();
 }
 
-void Device::create(GLFWwindow* window) {
+void Device::create(Window* window) {
     m_window = window;
     createInstance();
     setupDebugMessenger(m_instance);
-    createSurface(m_instance, window);
+    createSurface(m_instance, m_window->getNativeWindow());
     pickPhysicalDevice();
     createLogicalDevice(m_physicalDevice, m_surface);
 
     createSwapChain(m_physicalDevice, m_device, m_surface);
     createCommandPool(m_device, vkHelper::findQueueFamilies(m_physicalDevice, m_surface).graphicsFamily.value());
-    m_commandBuffers = renderer::createCommandBuffers(m_device, m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, (uint32_t)m_images.size());
+    m_commandBuffers = createCommandBuffers(m_device, m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, (uint32_t)m_images.size());
 }
 
 void Device::destroy() {
@@ -218,6 +218,104 @@ void Device::createInstance() {
     }
 }
 
+std::vector<VkCommandBuffer> Device::createCommandBuffers(const VkDevice& device, const VkCommandPool& commandPool, VkCommandBufferLevel level, uint32_t commandBufferCount) {
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.level = level;
+    allocInfo.commandPool = commandPool;
+    allocInfo.commandBufferCount = commandBufferCount;
+
+    std::vector<VkCommandBuffer> commandBuffers(commandBufferCount);
+    if (vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate command buffers!");
+    }
+    return std::move(commandBuffers);
+}
+
+VkCommandBuffer Device::createCommandBuffer(const VkDevice& device, const VkCommandPool& commandPool, VkCommandBufferLevel level, bool begin)
+{
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.level = level;
+    allocInfo.commandPool = commandPool;
+    allocInfo.commandBufferCount = 1;
+    VkCommandBuffer cmdBuffer;
+    if (vkAllocateCommandBuffers(device, &allocInfo, &cmdBuffer) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate command buffers!");
+    }
+    // If requested, also start recording for the new command buffer
+    if (begin)
+    {
+        VkCommandBufferBeginInfo beginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+    }
+    return cmdBuffer;
+}
+
+void Device::submitCommandBuffer(const VkQueue& queue, const VkSubmitInfo* submitInfo, const VkFence& fence) {
+    vkQueueSubmit(queue, 1, submitInfo, fence ? fence : VK_NULL_HANDLE);
+    vkQueueWaitIdle(queue);
+}
+
+void Device::flushCommandBuffer(const VkDevice& device, const VkCommandBuffer& commandBuffer, const VkQueue& queue, const VkCommandPool& pool, bool free)
+{
+    if (commandBuffer == VK_NULL_HANDLE) return;
+
+    vkEndCommandBuffer(commandBuffer);
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffer;
+
+    // Create fence to ensure that the command buffer has finished executing
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+    VkFence fence;
+    if (vkCreateFence(device, &fenceInfo, nullptr, &fence) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create synchronization objects for a frame!");
+    }
+    vkQueueSubmit(queue, 1, &submitInfo, fence);
+
+    // Wait for the fence to signal that command buffer has finished executing
+    vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
+    vkDestroyFence(device, fence, nullptr);
+    if (free)
+    {
+        vkFreeCommandBuffers(device, pool, 1, &commandBuffer);
+    }
+}
+
+VkCommandBuffer Device::beginImmediateCommandBuffer()
+{
+    VkCommandBufferBeginInfo beginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    if (vkBeginCommandBuffer(m_commandBuffers[m_currentFrame], &beginInfo) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to begin immediate command buffer (still in recording state?)");
+    }
+    return m_commandBuffers[m_currentFrame];
+}
+
+void Device::executeImmediateCommandBuffer(VkCommandBuffer commandBuffer)
+{
+    if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to end immediate command buffer");
+    }
+
+    VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffer;
+    vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(m_graphicsQueue);
+
+    if (vkResetCommandBuffer(commandBuffer, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to reset immediate command buffer");
+    }
+}
+
 void Device::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo) {
     createInfo = {};
     createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
@@ -284,8 +382,6 @@ void Device::pickPhysicalDevice() {
 
     vkGetPhysicalDeviceMemoryProperties(m_physicalDevice, &m_memoryProperties);
 }
-
-
 
 bool Device::checkDeviceExtensionSupport(VkPhysicalDevice device) {
     uint32_t extensionCount;
