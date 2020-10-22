@@ -19,7 +19,7 @@ struct Resource
 };
 
 namespace buffer {
-
+    void initDescriptor(Resource<VkBuffer>& buffer, VkDeviceSize size = VK_WHOLE_SIZE, VkDeviceSize offset = 0);
     void flush(const VkDevice& device, VkDeviceMemory memory, VkDeviceSize size, VkDeviceSize offset);
 
     VkBuffer createBuffer(const VkDevice& device,
@@ -30,16 +30,16 @@ namespace buffer {
     Resource<VkBuffer> createBuffer(Device* device,
         VkDeviceSize size,
         VkBufferUsageFlags usage,
-        VkSharingMode sharingMode,
         VkMemoryPropertyFlags memoryFlags,
+        VkSharingMode sharingMode = VK_SHARING_MODE_EXCLUSIVE,
         void* data = nullptr
     );
 
     void createBuffer(Device* device,
         VkDeviceSize size,
         VkBufferUsageFlags usage,
-        VkSharingMode sharingMode,
         VkMemoryPropertyFlags memoryFlags,
+        VkSharingMode sharingMode,
         VkBuffer* buffer,
         VkDeviceMemory* memory,
         void* data = nullptr

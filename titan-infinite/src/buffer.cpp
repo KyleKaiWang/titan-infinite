@@ -9,7 +9,7 @@
 
 namespace buffer {
     
-    void initDescriptor(VkDeviceSize size, VkDeviceSize offset, Resource<VkBuffer>& buffer)
+    void initDescriptor(Resource<VkBuffer>& buffer, VkDeviceSize size, VkDeviceSize offset)
     {
         buffer.descriptor.buffer = buffer.resource;
         buffer.descriptor.range = buffer.bufferSize;
@@ -45,8 +45,8 @@ namespace buffer {
     Resource<VkBuffer> createBuffer(Device* device,
         VkDeviceSize size,
         VkBufferUsageFlags usage,
-        VkSharingMode sharingMode,
         VkMemoryPropertyFlags memoryFlags,
+        VkSharingMode sharingMode,
         void* data
     ) {
         VkBufferCreateInfo bufferInfo{};
@@ -86,7 +86,7 @@ namespace buffer {
             }
             memory::unmap(device->getDevice(), buffer.memory);
         }
-        initDescriptor(buffer.bufferSize, 0, buffer);
+        initDescriptor(buffer);
 
         vkBindBufferMemory(device->getDevice(), buffer.resource, buffer.memory, 0);
 
@@ -96,8 +96,8 @@ namespace buffer {
     void createBuffer(Device* device,
         VkDeviceSize size,
         VkBufferUsageFlags usage,
-        VkSharingMode sharingMode,
         VkMemoryPropertyFlags memoryFlags,
+        VkSharingMode sharingMode,
         VkBuffer* buffer,
         VkDeviceMemory* memory,
         void* data
