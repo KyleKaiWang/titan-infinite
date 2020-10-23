@@ -5,11 +5,7 @@
  */
 
 #pragma once
-#include <vulkan/vulkan.hpp>
-#include <iostream>
-#include <set>
-#include <assert.h>
-#include <GLFW/glfw3.h>
+#include "window.h"
 
 #ifdef _DEBUG
 const bool enableValidationLayers = true;
