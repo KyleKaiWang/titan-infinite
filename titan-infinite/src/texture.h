@@ -5,38 +5,29 @@
  */
 
 #pragma once
-#include <vulkan/vulkan.hpp>
 
-struct TextureObject
+class TextureObject
 {
+public:
     VkSampler sampler;
     VkImageView view;
     VkImage image;
     VkDeviceMemory image_memory;
     VkImageLayout image_layout;
-    VkBuffer buffer;
     VkDeviceSize buffer_size;
     VkDescriptorImageInfo descriptor;
     
     bool is_hdr = false;
     bool needs_staging;
 
-    VkDeviceMemory buffer_memory;
     uint32_t width, height;
     uint32_t num_components;
     uint32_t layers = 1;
     uint32_t mipLevels;
-    std::unique_ptr<unsigned char> data;
-
+    
     int bytesPerPixel() const { return num_components * (is_hdr ? sizeof(float) : sizeof(unsigned char)); }
     int pitch() const { return width * bytesPerPixel(); }
-
-    template<typename T>
-    const T* pixels() const
-    {
-        return reinterpret_cast<const T*>(data.get());
-    }
-
+    void updateDescriptor();
     void destroy(const VkDevice& device);
 };
 
@@ -55,6 +46,7 @@ struct ImageMemoryBarrier
         barrier.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
         barrier.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
         texture.image_layout = newLayout;
+        texture.updateDescriptor();
     }
     operator VkImageMemoryBarrier() const { return barrier; }
     VkImageMemoryBarrier barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
@@ -96,7 +88,18 @@ namespace texture {
         const std::string& filename,
         VkFormat format, 
         Device* device,
-        int num_requested_components);
+        int num_requested_components,
+        VkFilter filter = VK_FILTER_LINEAR,
+        VkImageUsageFlags imageUsageFlags = VK_IMAGE_USAGE_SAMPLED_BIT,
+        VkImageLayout imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+    // From file - Cube
+    TextureObject loadTextureCube(
+        const std::string& filename,
+        VkFormat format,
+        Device* device,
+        VkImageUsageFlags imageUsageFlags = VK_IMAGE_USAGE_SAMPLED_BIT,
+        VkImageLayout imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
     // From buffer
     TextureObject loadTexture(
@@ -111,16 +114,10 @@ namespace texture {
         VkImageUsageFlags imageUsageFlags = VK_IMAGE_USAGE_SAMPLED_BIT, 
         VkImageLayout imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     
-    // From texture
-    TextureObject copyTexture(
-        Device* device,
-        const TextureObject& image,
-        VkFormat format, 
-        uint32_t mipLevels = 0);
-    
-    unsigned char* loadTextureData(
+    bool loadTextureData(
         char const* filename, 
-        int num_requested_components = 4, 
+        int num_requested_components,
+        std::vector<unsigned char>& image_data,
         int* image_width = nullptr, 
         int* image_height = nullptr, 
         int* image_num_components = nullptr,
@@ -147,16 +144,18 @@ namespace texture {
     void setImageLayout(
         VkCommandBuffer commandBuffer, 
         VkImage image,
-        VkImageAspectFlags aspectMask,
         VkImageLayout old_image_layout, 
         VkImageLayout new_image_layout,
         VkPipelineStageFlags src_stages,
         VkPipelineStageFlags dest_stages, 
-        VkImageSubresourceRange subresource_range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
+        VkImageSubresourceRange subresource_range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 },
+        VkAccessFlags src_access_mask = 0,
+        VkAccessFlags dst_access_mask = 0);
 
     void generateMipmaps(
         Device* device, 
-        TextureObject& texture);
+        TextureObject& texture,
+        VkFormat format);
 
     template<typename T> static constexpr T numMipmapLevels(T width, T height)
     {
