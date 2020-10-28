@@ -16,6 +16,7 @@
 #include <vector>
 #include <set>
 #include <chrono>
+#include <assert.h>
 
 #include <stb_image.h>
 #include <stb_image_write.h>
@@ -30,10 +31,9 @@
 #include "vkHelpers.h"
 #include "device.h"
 #include "camera.h"
-#include "window.h"
 #include "memory.h"
 #include "buffer.h"
 #include "renderer.h"
 #include "texture.h"
 #include "model.h"
-//#include "mesh.h"
+#include "skybox.h"

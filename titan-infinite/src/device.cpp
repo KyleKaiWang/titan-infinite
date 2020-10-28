@@ -6,7 +6,6 @@
 
 #include "pch.h"
 #include "device.h"
-
 Device::Device()
 {
 }
@@ -149,7 +148,7 @@ void Device::createCommandPool(const VkDevice& device, uint32_t queueFamilyIndic
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     poolInfo.queueFamilyIndex = queueFamilyIndices;
-    poolInfo.flags = 0;
+    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
     if (vkCreateCommandPool(device, &poolInfo, nullptr, &m_commandPool) != VK_SUCCESS) {
         throw std::runtime_error("failed to create command pool!");
@@ -272,7 +271,6 @@ void Device::flushCommandBuffer(const VkDevice& device, const VkCommandBuffer& c
     // Create fence to ensure that the command buffer has finished executing
     VkFenceCreateInfo fenceInfo{};
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
     VkFence fence;
     if (vkCreateFence(device, &fenceInfo, nullptr, &fence) != VK_SUCCESS) {
@@ -299,17 +297,17 @@ VkCommandBuffer Device::beginImmediateCommandBuffer()
     return m_commandBuffers[m_currentFrame];
 }
 
-void Device::executeImmediateCommandBuffer(VkCommandBuffer commandBuffer)
+void Device::executeImmediateCommandBuffer(VkCommandBuffer commandBuffer) 
 {
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
         throw std::runtime_error("Failed to end immediate command buffer");
     }
-
+    auto queue = getGraphicsQueue();
     VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &commandBuffer;
-    vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
-    vkQueueWaitIdle(m_graphicsQueue);
+    vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(queue);
 
     if (vkResetCommandBuffer(commandBuffer, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT) != VK_SUCCESS) {
         throw std::runtime_error("Failed to reset immediate command buffer");
