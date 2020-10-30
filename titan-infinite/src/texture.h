@@ -72,17 +72,6 @@ struct ImageMemoryBarrier
 
 namespace texture {
     
-    // Empty texture
-    TextureObject createTexture(
-        Device* device, 
-        uint32_t width, 
-        uint32_t height, 
-        uint32_t layers, 
-        VkFormat format,
-        uint32_t mipLevels = 0,
-        VkImageUsageFlags imageUsageFlags = 0,
-        VkSampler sampler = VK_NULL_HANDLE);
-
     // From file
     TextureObject loadTexture(
         const std::string& filename,

@@ -101,9 +101,9 @@ struct Device {
     void destroyDescriptorPool();
 
     std::vector<VkCommandBuffer> createCommandBuffers(const VkDevice& device, const VkCommandPool& commandPool, VkCommandBufferLevel level, uint32_t commandBufferCount);
-    VkCommandBuffer createCommandBuffer(const VkDevice& device, const VkCommandPool& commandPool, VkCommandBufferLevel level, bool begin);
+    VkCommandBuffer createCommandBuffer(VkCommandBufferLevel level, bool begin);
     void submitCommandBuffer(const VkQueue& queue, const VkSubmitInfo* submitInfo, const VkFence& fence);
-    void flushCommandBuffer(const VkDevice& device, const VkCommandBuffer& commandBuffer, const VkQueue& queue, const VkCommandPool& pool, bool free = true);
+    void flushCommandBuffer(const VkCommandBuffer& commandBuffer, const VkQueue& queue, bool free = true);
     VkCommandBuffer beginImmediateCommandBuffer();
     void executeImmediateCommandBuffer(VkCommandBuffer commandBuffer);
 

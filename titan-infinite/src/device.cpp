@@ -140,7 +140,6 @@ void Device::destroySwapChain() {
         vkDestroySemaphore(m_device, m_imageAvailableSemaphores[i], nullptr);
         vkDestroySemaphore(m_device, m_renderFinishedSemaphores[i], nullptr);
     }
-
     vkDestroySwapchainKHR(m_device, m_swapChain, nullptr);
 }
 
@@ -231,22 +230,21 @@ std::vector<VkCommandBuffer> Device::createCommandBuffers(const VkDevice& device
     return std::move(commandBuffers);
 }
 
-VkCommandBuffer Device::createCommandBuffer(const VkDevice& device, const VkCommandPool& commandPool, VkCommandBufferLevel level, bool begin)
+VkCommandBuffer Device::createCommandBuffer(VkCommandBufferLevel level, bool begin)
 {
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.level = level;
-    allocInfo.commandPool = commandPool;
+    allocInfo.commandPool = getCommandPool();
     allocInfo.commandBufferCount = 1;
     VkCommandBuffer cmdBuffer;
-    if (vkAllocateCommandBuffers(device, &allocInfo, &cmdBuffer) != VK_SUCCESS) {
+    if (vkAllocateCommandBuffers(getDevice(), &allocInfo, &cmdBuffer) != VK_SUCCESS) {
         throw std::runtime_error("failed to allocate command buffers!");
     }
     // If requested, also start recording for the new command buffer
     if (begin)
     {
         VkCommandBufferBeginInfo beginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         vkBeginCommandBuffer(cmdBuffer, &beginInfo);
     }
     return cmdBuffer;
@@ -257,7 +255,7 @@ void Device::submitCommandBuffer(const VkQueue& queue, const VkSubmitInfo* submi
     vkQueueWaitIdle(queue);
 }
 
-void Device::flushCommandBuffer(const VkDevice& device, const VkCommandBuffer& commandBuffer, const VkQueue& queue, const VkCommandPool& pool, bool free)
+void Device::flushCommandBuffer(const VkCommandBuffer& commandBuffer, const VkQueue& queue, bool free)
 {
     if (commandBuffer == VK_NULL_HANDLE) return;
 
@@ -273,17 +271,17 @@ void Device::flushCommandBuffer(const VkDevice& device, const VkCommandBuffer& c
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 
     VkFence fence;
-    if (vkCreateFence(device, &fenceInfo, nullptr, &fence) != VK_SUCCESS) {
+    if (vkCreateFence(getDevice(), &fenceInfo, nullptr, &fence) != VK_SUCCESS) {
         throw std::runtime_error("failed to create synchronization objects for a frame!");
     }
     vkQueueSubmit(queue, 1, &submitInfo, fence);
 
     // Wait for the fence to signal that command buffer has finished executing
-    vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
-    vkDestroyFence(device, fence, nullptr);
+    vkWaitForFences(getDevice(), 1, &fence, VK_TRUE, UINT64_MAX);
+    vkDestroyFence(getDevice(), fence, nullptr);
     if (free)
     {
-        vkFreeCommandBuffers(device, pool, 1, &commandBuffer);
+        vkFreeCommandBuffers(getDevice(), getCommandPool(), 1, &commandBuffer);
     }
 }
 
