@@ -7,27 +7,34 @@
 #pragma once
 #include <vulkan/vulkan.hpp>
 
-template<class T>
-struct Resource
+struct Buffer
 {
-    T resource;
+    VkDevice device;
+    VkBuffer buffer = VK_NULL_HANDLE;
     VkDeviceMemory memory = VK_NULL_HANDLE;
     VkDeviceSize bufferSize = 0;
     uint32_t memoryTypeIndex;
     VkDescriptorBufferInfo descriptor;
     void* mapped = nullptr;
+    VkResult Buffer::map(VkDeviceSize size = VK_WHOLE_SIZE, VkDeviceSize offset = 0);
+    void unmap();
+    void updateDescriptor(VkDeviceSize size = VK_WHOLE_SIZE, VkDeviceSize offset = 0);
+    void flush(VkDeviceSize size = VK_WHOLE_SIZE, VkDeviceSize offset = 0);
+    void destroy();
 };
 
 namespace buffer {
-    void initDescriptor(Resource<VkBuffer>& buffer, VkDeviceSize size = VK_WHOLE_SIZE, VkDeviceSize offset = 0);
-    void flush(const VkDevice& device, VkDeviceMemory memory, VkDeviceSize size, VkDeviceSize offset);
 
-    VkBuffer createBuffer(const VkDevice& device,
+    VkBuffer createBuffer(
+        const VkDevice& device,
         VkDeviceSize size,
         VkBufferUsageFlags usage,
-        VkSharingMode sharingMode);
+        VkMemoryPropertyFlags memoryFlags,
+        VkSharingMode sharingMode = VK_SHARING_MODE_EXCLUSIVE
+    );
 
-    Resource<VkBuffer> createBuffer(Device* device,
+    Buffer createBuffer(
+        Device* device,
         VkDeviceSize size,
         VkBufferUsageFlags usage,
         VkMemoryPropertyFlags memoryFlags,
@@ -35,7 +42,8 @@ namespace buffer {
         void* data = nullptr
     );
 
-    void createBuffer(Device* device,
+    void createBuffer(
+        Device* device,
         VkDeviceSize size,
         VkBufferUsageFlags usage,
         VkMemoryPropertyFlags memoryFlags,

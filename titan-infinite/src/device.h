@@ -94,10 +94,10 @@ struct Device {
     void createSwapChain(const VkPhysicalDevice& physicalDevice, VkDevice device, const VkSurfaceKHR& surface);
     void destroySwapChain();
     
-    void createCommandPool(const VkDevice& device, uint32_t queueFamilyIndices);
+    VkCommandPool createCommandPool(const VkDevice& device, uint32_t queueFamilyIndices);
     void destroyCommandPool();
     
-    void createDescriptorPool(const VkDevice& device, const std::vector<VkDescriptorPoolSize>& poolSizes, uint32_t maxSets);
+    VkDescriptorPool createDescriptorPool(const VkDevice& device, const std::vector<VkDescriptorPoolSize>& poolSizes, uint32_t maxSets);
     void destroyDescriptorPool();
 
     std::vector<VkCommandBuffer> createCommandBuffers(const VkDevice& device, const VkCommandPool& commandPool, VkCommandBufferLevel level, uint32_t commandBufferCount);

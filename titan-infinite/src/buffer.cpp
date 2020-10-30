@@ -7,28 +7,56 @@
 #include "pch.h"
 #include "buffer.h"
 
-namespace buffer {
-    
-    void initDescriptor(Resource<VkBuffer>& buffer, VkDeviceSize size, VkDeviceSize offset)
+VkResult Buffer::map(VkDeviceSize size, VkDeviceSize offset)
+{
+    return vkMapMemory(device, memory, offset, size, 0, &mapped);
+}
+
+void Buffer::unmap()
+{
+    if (mapped)
     {
-        buffer.descriptor.buffer = buffer.resource;
-        buffer.descriptor.range = buffer.bufferSize;
-        buffer.descriptor.offset = offset;
+        vkUnmapMemory(device, memory);
+        mapped = nullptr;
     }
+}
 
-    void flush(const VkDevice& device, VkDeviceMemory memory, VkDeviceSize size, VkDeviceSize offset) {
-        VkMappedMemoryRange mappedRange{};
-        mappedRange.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-        mappedRange.memory = memory;
-        mappedRange.offset = offset;
-        mappedRange.size = size;
-        vkFlushMappedMemoryRanges(device, 1, &mappedRange);
+void Buffer::updateDescriptor(VkDeviceSize size, VkDeviceSize offset)
+{
+    descriptor.buffer = buffer;
+    descriptor.range = bufferSize;
+    descriptor.offset = offset;
+}
+
+void Buffer::flush(VkDeviceSize size, VkDeviceSize offset) {
+    VkMappedMemoryRange mappedRange{};
+    mappedRange.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+    mappedRange.memory = memory;
+    mappedRange.offset = offset;
+    mappedRange.size = size;
+    vkFlushMappedMemoryRanges(device, 1, &mappedRange);
+}
+
+void Buffer::destroy()
+{
+    if (mapped) {
+        memory::unmap(device, memory);
     }
+    vkDestroyBuffer(device, buffer, nullptr);
+    vkFreeMemory(device, memory, nullptr);
+    buffer = VK_NULL_HANDLE;
+    memory = VK_NULL_HANDLE;
+}
 
-    VkBuffer createBuffer(const VkDevice& device,
-        VkDeviceSize size,
-        VkBufferUsageFlags usage,
-        VkSharingMode sharingMode) {
+namespace buffer {
+
+    VkBuffer createBuffer(
+        const VkDevice& device, 
+        VkDeviceSize size, 
+        VkBufferUsageFlags usage, 
+        VkMemoryPropertyFlags memoryFlags, 
+        VkSharingMode sharingMode
+    ) {
         VkBufferCreateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferInfo.size = size;
@@ -42,7 +70,8 @@ namespace buffer {
         return buffer;
     }
 
-    Resource<VkBuffer> createBuffer(Device* device,
+    Buffer createBuffer(
+        Device* device,
         VkDeviceSize size,
         VkBufferUsageFlags usage,
         VkMemoryPropertyFlags memoryFlags,
@@ -55,14 +84,14 @@ namespace buffer {
         bufferInfo.usage = usage;
         bufferInfo.sharingMode = sharingMode;
 
-        Resource<VkBuffer> buffer;
-        if (vkCreateBuffer(device->getDevice(), &bufferInfo, nullptr, &buffer.resource) != VK_SUCCESS) {
+        Buffer buffer;
+        buffer.device = device->getDevice();
+        if (vkCreateBuffer(device->getDevice(), &bufferInfo, nullptr, &buffer.buffer) != VK_SUCCESS) {
             throw std::runtime_error("failed to create buffer!");
         }
 
         VkMemoryRequirements memReqs;
-        vkGetBufferMemoryRequirements(device->getDevice(), buffer.resource, &memReqs);
-        buffer.bufferSize = memReqs.size;
+        vkGetBufferMemoryRequirements(device->getDevice(), buffer.buffer, &memReqs);
 
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -82,13 +111,14 @@ namespace buffer {
             // If host coherency hasn't been requested, do a manual flush to make writes visible
             if ((memoryFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) == 0)
             {
-                buffer::flush(device->getDevice(), buffer.memory, size, 0);
+                buffer.flush(size, 0);
             }
             memory::unmap(device->getDevice(), buffer.memory);
         }
-        initDescriptor(buffer);
+        buffer.bufferSize = size;
+        buffer.updateDescriptor();
 
-        vkBindBufferMemory(device->getDevice(), buffer.resource, buffer.memory, 0);
+        vkBindBufferMemory(device->getDevice(), buffer.buffer, buffer.memory, 0);
 
         return buffer;
     }
@@ -142,7 +172,6 @@ namespace buffer {
             }
             memory::unmap(device->getDevice(), *memory);
         }
-
         vkBindBufferMemory(device->getDevice(), *buffer, *memory, 0);
     }
 }
