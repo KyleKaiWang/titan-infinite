@@ -44,13 +44,6 @@ private:
     Window* m_window;
     Device* m_device;
 
-    VkImage m_depthImage;
-    VkDeviceMemory m_depthImageMemory;
-    VkImageView m_depthImageView;
-
-    VkRenderPass m_renderPass;
-    std::vector<VkFramebuffer> m_framebuffers;
-
     struct DescriptorSets {
         VkDescriptorSet scene;
     }descriptorSet;
@@ -121,11 +114,11 @@ private:
         float alphaMaskCutoff;
     } pushConstBlockMaterial;
 
-    struct {
-        TextureObject environmentCube;
-        TextureObject irradianceCube;
-        TextureObject lutBrdf;
-    }ibl_textures;
+    //struct {
+    //    TextureObject environmentCube;
+    //    TextureObject irradianceCube;
+    //    TextureObject lutBrdf;
+    //}ibl_textures;
     
     TextureObject emptyTexture;
     VkSampler m_defaultSampler;
@@ -159,9 +152,6 @@ private:
         m_device = new Device();
         m_device->create(m_window);
 
-        initDepthbuffer();
-        initRenderPass();
-        initFramebuffer();
         initGUI();
         loadAssets();
 
@@ -176,79 +166,6 @@ private:
         buildCommandBuffers();
     }
 
-    void initDepthbuffer() {
-        auto depthFormat = vkHelper::findDepthFormat(m_device->getPhysicalDevice());
-        m_depthImage = renderer::createImage(m_device->getDevice(), 0, VK_IMAGE_TYPE_2D, depthFormat, { WIDTH, HEIGHT, 1 }, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED);
-
-        VkMemoryRequirements memRequirements = memory::getMemoryRequirements(m_device->getDevice(), m_depthImage);
-        m_depthImageMemory = memory::allocate(m_device->getDevice(), memRequirements.size, m_device->findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
-        memory::bind(m_device->getDevice(), m_depthImageMemory, 0, m_depthImage);
-        m_depthImageView = renderer::createImageView(m_device->getDevice(),
-            m_depthImage,
-            VK_IMAGE_VIEW_TYPE_2D,
-            depthFormat,
-            { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A },
-            { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 });
-    }
-
-    void initRenderPass() {
-        VkAttachmentDescription colorAttachment{};
-        colorAttachment.format = m_device->getSwapChainImageFormat();
-        colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-        colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-        colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-
-        VkAttachmentDescription depthAttachment{};
-        depthAttachment.format = vkHelper::findDepthFormat(m_device->getPhysicalDevice());
-        depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-        depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-        depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-        std::vector<VkAttachmentDescription> attachmentDesc{ colorAttachment, depthAttachment };
-
-        VkAttachmentReference colorAttachmentRef{};
-        colorAttachmentRef.attachment = 0;
-        colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        std::vector<VkAttachmentReference> colorAttachmentRefs{ colorAttachmentRef };
-
-        VkAttachmentReference depthAttachmentRef{};
-        depthAttachmentRef.attachment = 1;
-        depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-        SubpassDescription subpass{};
-        subpass.colorAttachments = colorAttachmentRefs;
-        subpass.depthStencilAttachment = depthAttachmentRef;
-
-        std::vector<SubpassDescription> subpassDesc{ subpass };
-
-        VkSubpassDependency dependency{};
-        dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-        dependency.dstSubpass = 0;
-        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependency.srcAccessMask = 0;
-        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        std::vector<VkSubpassDependency> dependencies{ dependency };
-
-        m_renderPass = renderer::createRenderPass(m_device->getDevice(), attachmentDesc, subpassDesc, dependencies);
-    }
-
-    void initFramebuffer() {
-        std::vector<VkImageView> imageViews = m_device->getSwapChainimageViews();
-        m_framebuffers.resize(imageViews.size());
-        for (std::size_t i = 0; i < m_device->getSwapChainimages().size(); ++i) {
-            m_framebuffers[i] = renderer::createFramebuffer(m_device->getDevice(), m_renderPass, { imageViews[i], m_depthImageView }, m_device->getSwapChainExtent(), 1);
-        }
-    }
-
     void initGUI() {
         // Pipeline Cache
         {
@@ -257,7 +174,7 @@ private:
             vkCreatePipelineCache(m_device->getDevice(), &pipelineCacheCreateInfo, nullptr, &m_pipelineCache);
         }
         gui.initResources(m_device);
-        gui.initPipeline(m_pipelineCache, m_renderPass);
+        gui.initPipeline(m_pipelineCache, m_device->getRenderPass());
     }
 
     void loadAssets() {
@@ -285,337 +202,337 @@ private:
         emptyTexture = texture::loadTexture("data/textures/empty.jpg", VK_FORMAT_R8G8B8A8_UNORM, m_device, 4);
 
         // TODO : 
-        ibl_textures.environmentCube = texture::loadTextureCube("data/textures/papermill.ktx", VK_FORMAT_R16G16B16A16_SFLOAT, m_device, 4);
-        ibl_textures.irradianceCube = texture::loadTextureCube("data/textures/papermill.ktx", VK_FORMAT_R32G32B32A32_SFLOAT, m_device, 4);
-        ibl_textures.lutBrdf = texture::loadTexture("data/textures/empty.jpg", VK_FORMAT_R8G8B8A8_UNORM, m_device, 4);
+        //ibl_textures.environmentCube = texture::loadTextureCube("data/textures/papermill.ktx", VK_FORMAT_R16G16B16A16_SFLOAT, m_device, 4);
+        //ibl_textures.irradianceCube = texture::loadTextureCube("data/textures/papermill.ktx", VK_FORMAT_R32G32B32A32_SFLOAT, m_device, 4);
+        //ibl_textures.lutBrdf = texture::loadTexture("data/textures/empty.jpg", VK_FORMAT_R8G8B8A8_UNORM, m_device, 4);
     }
     
-    void loadEnvironment() {
-        uint32_t kEnvMapSize = 1024;
-        uint32_t kIrradianceMapSize = 32;
-        uint32_t kBRDF_LUT_Size = 256;
-        uint32_t kEnvMapLevels = std::floor(std::log2((std::max)(kEnvMapSize, kEnvMapSize))) + 1;
-        
-        // Environment map (with pre-filtered mip chain)
-        //ibl_textures.environmentCube = texture::createTexture(m_device, kEnvMapSize, kEnvMapSize, 6, VK_FORMAT_R16G16B16A16_SFLOAT, 0, VK_IMAGE_USAGE_STORAGE_BIT);
-        ibl_textures.environmentCube = texture::loadTextureCube("data/textures/papermill.ktx", VK_FORMAT_R16G16B16A16_SFLOAT, m_device);
-        // Irradiance map
-        //ibl_textures.irradianceCube = texture::createTexture(m_device, kIrradianceMapSize, kIrradianceMapSize, 6, VK_FORMAT_R16G16B16A16_SFLOAT, 1, VK_IMAGE_USAGE_STORAGE_BIT);
-        ibl_textures.irradianceCube = texture::loadTextureCube("data/textures/papermill.ktx", VK_FORMAT_R16G16B16A16_SFLOAT, m_device);
-        // 2D LUT for split-sum approximation
-        //ibl_textures.lutBrdf = texture::createTexture(m_device, kBRDF_LUT_Size, kBRDF_LUT_Size, 1, VK_FORMAT_R16G16_SFLOAT, 1, VK_IMAGE_USAGE_STORAGE_BIT);
-        ibl_textures.lutBrdf = texture::loadTexture("data/textures/empty.jpg", VK_FORMAT_R16G16B16A16_SFLOAT, m_device, 4, VK_FILTER_LINEAR);
-        // Create samplers.
-        VkSampler computeSampler = texture::createSampler(
-            m_device->getDevice(),
-            VK_FILTER_LINEAR,
-            VK_FILTER_LINEAR,
-            VK_SAMPLER_MIPMAP_MODE_LINEAR,
-            VK_SAMPLER_ADDRESS_MODE_REPEAT,
-            VK_SAMPLER_ADDRESS_MODE_REPEAT,
-            VK_SAMPLER_ADDRESS_MODE_REPEAT,
-            0.0,
-            VK_TRUE,
-            16.0f,
-            VK_FALSE,
-            VK_COMPARE_OP_ALWAYS,
-            0.0,
-            0.0,
-            VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
-            VK_FALSE);
-        ibl_textures.lutBrdf.sampler = texture::createSampler(
-            m_device->getDevice(),
-            VK_FILTER_LINEAR,
-            VK_FILTER_LINEAR,
-            VK_SAMPLER_MIPMAP_MODE_LINEAR,
-            VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-            VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-            VK_SAMPLER_ADDRESS_MODE_REPEAT,
-            0.0,
-            VK_FALSE,
-            16.0f,
-            VK_FALSE,
-            VK_COMPARE_OP_ALWAYS,
-            0.0,
-            FLT_MAX,
-            VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
-            VK_FALSE);
-        ibl_textures.lutBrdf.updateDescriptor();
-
-        // Create temporary descriptor pool for pre-processing compute shaders.
-        VkDescriptorPool computeDescriptorPool;
-        {
-            const std::array<VkDescriptorPoolSize, 2> poolSizes = { {
-                { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 },
-                { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, kEnvMapLevels },
-            } };
-
-            VkDescriptorPoolCreateInfo createInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
-            createInfo.maxSets = 2;
-            createInfo.poolSizeCount = (uint32_t)poolSizes.size();
-            createInfo.pPoolSizes = poolSizes.data();
-            if (vkCreateDescriptorPool(m_device->getDevice(), &createInfo, nullptr, &computeDescriptorPool) != VK_SUCCESS) {
-                throw std::runtime_error("Failed to create setup descriptor pool");
-            }
-        }
-
-        // Friendly binding names for compute pipeline descriptor set
-        enum ComputeDescriptorSetBindingNames : uint32_t {
-            Binding_InputTexture = 0,
-            Binding_OutputTexture = 1,
-            Binding_OutputMipTail = 2,
-        };
-
-        // Create common descriptor set & pipeline layout for pre-processing compute shaders.
-        VkPipelineLayout computePipelineLayout;
-        VkDescriptorSet computeDescriptorSet;
-        {
-            const std::vector<DescriptorSetLayoutBinding> descriptorSetLayoutBindings = {
-                { Binding_InputTexture, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, &computeSampler },
-                { Binding_OutputTexture, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
-                { Binding_OutputMipTail, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, kEnvMapLevels - 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
-            };
-
-            descriptorSetLayouts.compute = renderer::createDescriptorSetLayout(m_device->getDevice(), { descriptorSetLayoutBindings });
-            computeDescriptorSet = renderer::createDescriptorSet(m_device->getDevice(), computeDescriptorPool, descriptorSetLayouts.compute);
-
-            const std::vector<VkDescriptorSetLayout> pipelineSetLayouts = {
-                descriptorSetLayouts.compute,
-            };
-            const std::vector<VkPushConstantRange> pipelinePushConstantRanges = {
-                { VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(SpecularFilterPushConstants) },
-            };
-            computePipelineLayout = renderer::createPipelineLayout(m_device->getDevice(), { pipelineSetLayouts }, { pipelinePushConstantRanges });
-        }
-
-        // Load & pre-process environment map.
-        {
-            //TextureObject envTextureUnfiltered = texture::createTexture(m_device, kEnvMapSize, kEnvMapSize, 6, VK_FORMAT_R16G16B16A16_SFLOAT, 0, VK_IMAGE_USAGE_STORAGE_BIT);
-            TextureObject envTextureUnfiltered = texture::loadTextureCube("data/textures/papermill.ktx", VK_FORMAT_R16G16B16A16_SFLOAT, m_device, VK_IMAGE_USAGE_STORAGE_BIT);
-            // Load & convert equirectangular envuronment map to cubemap texture
-            {
-                VkPipeline pipeline = renderer::createComputePipeline(m_device->getDevice(), "data/shaders/equirect2cube.comp.spv", computePipelineLayout);
-
-                // TODO : hdr
-                TextureObject envTextureEquirect = texture::loadTexture("data/textures/empty.jpg", VK_FORMAT_R16G16B16A16_SFLOAT, m_device, 4, VK_FILTER_LINEAR);
-                //texture::generateMipmaps(m_device, envTextureEquirect, VK_FORMAT_R32G32B32A32_SFLOAT);
-
-                const VkDescriptorImageInfo inputTexture = { VK_NULL_HANDLE, envTextureEquirect.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-                const VkDescriptorImageInfo outputTexture = { VK_NULL_HANDLE, envTextureUnfiltered.view, VK_IMAGE_LAYOUT_GENERAL };
-                {
-                    VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-                    writeDescriptorSet.dstSet = computeDescriptorSet;
-                    writeDescriptorSet.dstBinding = Binding_InputTexture;
-                    writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-                    writeDescriptorSet.descriptorCount = 1;
-                    writeDescriptorSet.pImageInfo = &inputTexture;
-                    vkUpdateDescriptorSets(m_device->getDevice(), 1, &writeDescriptorSet, 0, nullptr);
-                }
-                {
-                    VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-                    writeDescriptorSet.dstSet = computeDescriptorSet;
-                    writeDescriptorSet.dstBinding = Binding_OutputTexture;
-                    writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-                    writeDescriptorSet.descriptorCount = 1;
-                    writeDescriptorSet.pImageInfo = &outputTexture;
-                    vkUpdateDescriptorSets(m_device->getDevice(), 1, &writeDescriptorSet, 0, nullptr);
-                }
-
-                VkCommandBuffer commandBuffer = m_device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
-                {
-                    const auto preDispatchBarrier = ImageMemoryBarrier(envTextureUnfiltered, 0, VK_ACCESS_SHADER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL).mipLevels(0, 1);
-                    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, reinterpret_cast<const VkImageMemoryBarrier*>(&preDispatchBarrier));
-
-                    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
-                    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, computePipelineLayout, 0, 1, &computeDescriptorSet, 0, nullptr);
-                    vkCmdDispatch(commandBuffer, kEnvMapSize / 32, kEnvMapSize / 32, 6);
-
-                    const auto postDispatchBarrier = ImageMemoryBarrier(envTextureUnfiltered, VK_ACCESS_SHADER_WRITE_BIT, 0, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL).mipLevels(0, 1);
-                    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, reinterpret_cast<const VkImageMemoryBarrier*>(&postDispatchBarrier));
-                }
-                m_device->executeImmediateCommandBuffer(commandBuffer);
-
-                vkDestroyPipeline(m_device->getDevice(), pipeline, nullptr);
-                envTextureEquirect.destroy(m_device->getDevice());
-
-                //texture::generateMipmaps(m_device, envTextureUnfiltered, VK_FORMAT_R16G16B16A16_SFLOAT);
-            }
-
-            // Compute pre-filtered specular environment map.
-            {
-                const uint32_t numMipTailLevels = kEnvMapLevels - 1;
-
-                VkPipeline pipeline;
-                {
-                    const VkSpecializationMapEntry specializationMap = { 0, 0, sizeof(uint32_t) };
-                    const uint32_t specializationData[] = { numMipTailLevels };
-
-                    const VkSpecializationInfo specializationInfo = { 1, &specializationMap, sizeof(specializationData), specializationData };
-                    pipeline = renderer::createComputePipeline(m_device->getDevice(), "data/shaders/spmap.comp.spv", computePipelineLayout, &specializationInfo);
-                }
-
-                VkCommandBuffer commandBuffer = m_device->beginImmediateCommandBuffer();
-
-                // Copy base mipmap level into destination environment map.
-                {
-                    const std::vector<ImageMemoryBarrier> preCopyBarriers = {
-                        ImageMemoryBarrier(envTextureUnfiltered, 0, VK_ACCESS_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL).mipLevels(0, 1),
-                        ImageMemoryBarrier(ibl_textures.environmentCube, 0, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
-                    };
-
-                    const std::vector<ImageMemoryBarrier> postCopyBarriers = {
-                       ImageMemoryBarrier(envTextureUnfiltered, VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL).mipLevels(0, 1),
-                       ImageMemoryBarrier(ibl_textures.environmentCube, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_WRITE_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL),
-                    };
-                    
-                    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, reinterpret_cast<const VkImageMemoryBarrier*>(&preCopyBarriers));
-
-                    VkImageCopy copyRegion{};
-                    copyRegion.extent = { ibl_textures.environmentCube.width, ibl_textures.environmentCube.height, 1 };
-                    copyRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                    copyRegion.srcSubresource.layerCount = ibl_textures.environmentCube.layers;
-                    copyRegion.dstSubresource = copyRegion.srcSubresource;
-                    vkCmdCopyImage(commandBuffer,
-                        envTextureUnfiltered.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                        ibl_textures.environmentCube.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                        1, &copyRegion);
-                   
-                    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, reinterpret_cast<const VkImageMemoryBarrier*>(&postCopyBarriers));
-                }
-
-                // Pre-filter rest of the mip-chain.
-                std::vector<VkImageView> envTextureMipTailViews;
-                {
-                    std::vector<VkDescriptorImageInfo> envTextureMipTailDescriptors;
-                    const VkDescriptorImageInfo inputTexture = { VK_NULL_HANDLE, envTextureUnfiltered.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-                    {
-                        VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-                        writeDescriptorSet.dstSet = computeDescriptorSet;
-                        writeDescriptorSet.dstBinding = Binding_InputTexture;
-                        writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-                        writeDescriptorSet.descriptorCount = 1;
-                        writeDescriptorSet.pImageInfo = &inputTexture;
-                        vkUpdateDescriptorSets(m_device->getDevice(), 1, &writeDescriptorSet, 0, nullptr);
-                    }
-
-                    for (uint32_t level = 1; level < kEnvMapLevels; ++level) {
-                        envTextureMipTailViews.push_back(renderer::createImageView(
-                            m_device->getDevice(),
-                            ibl_textures.environmentCube.image,
-                            (ibl_textures.environmentCube.layers == 6) ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D,
-                            VK_FORMAT_R16G16B16A16_SFLOAT,
-                            { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A },
-                            { VK_IMAGE_ASPECT_COLOR_BIT, level, 1, 0, VK_REMAINING_ARRAY_LAYERS }
-                        ));
-                        envTextureMipTailDescriptors.push_back(VkDescriptorImageInfo{ VK_NULL_HANDLE, envTextureMipTailViews[level - 1], VK_IMAGE_LAYOUT_GENERAL });
-                    }
-                    {
-                        VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-                        writeDescriptorSet.dstSet = computeDescriptorSet;
-                        writeDescriptorSet.dstBinding = Binding_OutputMipTail;
-                        writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-                        writeDescriptorSet.descriptorCount = (uint32_t)envTextureMipTailDescriptors.size();
-                        writeDescriptorSet.pImageInfo = envTextureMipTailDescriptors.data();
-                        vkUpdateDescriptorSets(m_device->getDevice(), 1, &writeDescriptorSet, 0, nullptr);
-                    }
-
-                    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
-                    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, computePipelineLayout, 0, 1, &computeDescriptorSet, 0, nullptr);
-
-                    const float deltaRoughness = 1.0f / (std::max)(float(numMipTailLevels), 1.0f);
-                    for (uint32_t level = 1, size = kEnvMapSize / 2; level < kEnvMapLevels; ++level, size /= 2) {
-                        const uint32_t numGroups = (std::max<uint32_t>)(1, size / 32);
-
-                        const SpecularFilterPushConstants pushConstants = { level - 1, level * deltaRoughness };
-                        vkCmdPushConstants(commandBuffer, computePipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(SpecularFilterPushConstants), &pushConstants);
-                        vkCmdDispatch(commandBuffer, numGroups, numGroups, 6);
-                    }
-
-                    const auto barrier = ImageMemoryBarrier(ibl_textures.environmentCube, VK_ACCESS_SHADER_WRITE_BIT, 0, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-                    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, reinterpret_cast<const VkImageMemoryBarrier*>(&barrier));
-                }
-
-                m_device->executeImmediateCommandBuffer(commandBuffer);
-
-                for (VkImageView mipTailView : envTextureMipTailViews) {
-                    vkDestroyImageView(m_device->getDevice(), mipTailView, nullptr);
-                }
-                vkDestroyPipeline(m_device->getDevice(), pipeline, nullptr);
-                envTextureUnfiltered.destroy(m_device->getDevice());
-            }
-
-            // Compute diffuse irradiance cubemap
-            {
-                VkPipeline pipeline = renderer::createComputePipeline(m_device->getDevice(), "data/shaders/irmap.comp.spv", computePipelineLayout);
-
-                const VkDescriptorImageInfo inputTexture = { VK_NULL_HANDLE, ibl_textures.environmentCube.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-                const VkDescriptorImageInfo outputTexture = { VK_NULL_HANDLE, ibl_textures.irradianceCube.view, VK_IMAGE_LAYOUT_GENERAL };
-                {
-                    VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-                    writeDescriptorSet.dstSet = computeDescriptorSet;
-                    writeDescriptorSet.dstBinding = Binding_InputTexture;
-                    writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-                    writeDescriptorSet.descriptorCount = 1;
-                    writeDescriptorSet.pImageInfo = &inputTexture;
-                    vkUpdateDescriptorSets(m_device->getDevice(), 1, &writeDescriptorSet, 0, nullptr);
-                }
-
-                {
-                    VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-                    writeDescriptorSet.dstSet = computeDescriptorSet;
-                    writeDescriptorSet.dstBinding = Binding_OutputTexture;
-                    writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-                    writeDescriptorSet.descriptorCount = 1;
-                    writeDescriptorSet.pImageInfo = &outputTexture;
-                    vkUpdateDescriptorSets(m_device->getDevice(), 1, &writeDescriptorSet, 0, nullptr);
-                }
-
-                VkCommandBuffer commandBuffer = m_device->beginImmediateCommandBuffer();
-                {
-                    const auto preDispatchBarrier = ImageMemoryBarrier(ibl_textures.irradianceCube, 0, VK_ACCESS_SHADER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-                    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, reinterpret_cast<const VkImageMemoryBarrier*>(&preDispatchBarrier));
-                    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
-                    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, computePipelineLayout, 0, 1, &computeDescriptorSet, 0, nullptr);
-                    vkCmdDispatch(commandBuffer, kIrradianceMapSize / 32, kIrradianceMapSize / 32, 6);
-
-                    const auto postDispatchBarrier = ImageMemoryBarrier(ibl_textures.irradianceCube, VK_ACCESS_SHADER_WRITE_BIT, 0, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-                    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, reinterpret_cast<const VkImageMemoryBarrier*>(&postDispatchBarrier));
-                }
-                m_device->executeImmediateCommandBuffer(commandBuffer);
-                vkDestroyPipeline(m_device->getDevice(), pipeline, nullptr);
-            }
-
-            // Compute Cook-Torrance BRDF 2D LUT for split-sum approximation.
-            {
-                VkPipeline pipeline = renderer::createComputePipeline(m_device->getDevice(), "data/shaders/spbrdf.comp.spv", computePipelineLayout);
-
-                const VkDescriptorImageInfo outputTexture = { ibl_textures.lutBrdf.sampler, ibl_textures.lutBrdf.view, VK_IMAGE_LAYOUT_GENERAL };
-                {
-                    VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-                    writeDescriptorSet.dstSet = computeDescriptorSet;
-                    writeDescriptorSet.dstBinding = Binding_OutputTexture;
-                    writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-                    writeDescriptorSet.descriptorCount = 1;
-                    writeDescriptorSet.pImageInfo = &outputTexture;
-                    vkUpdateDescriptorSets(m_device->getDevice(), 1, &writeDescriptorSet, 0, nullptr);
-                }
-
-                VkCommandBuffer commandBuffer = m_device->beginImmediateCommandBuffer();
-                {
-                    const auto preDispatchBarrier = ImageMemoryBarrier(ibl_textures.lutBrdf, 0, VK_ACCESS_SHADER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-                    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, reinterpret_cast<const VkImageMemoryBarrier*>(&preDispatchBarrier));
-                    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
-                    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, computePipelineLayout, 0, 1, &computeDescriptorSet, 0, nullptr);
-                    vkCmdDispatch(commandBuffer, kBRDF_LUT_Size / 32, kBRDF_LUT_Size / 32, 6);
-
-                    const auto postDispatchBarrier = ImageMemoryBarrier(ibl_textures.lutBrdf, VK_ACCESS_SHADER_WRITE_BIT, 0, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-                    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, reinterpret_cast<const VkImageMemoryBarrier*>(&postDispatchBarrier));
-                }
-                m_device->executeImmediateCommandBuffer(commandBuffer);
-                vkDestroyPipeline(m_device->getDevice(), pipeline, nullptr);
-            }
-        }
-    }
+    //void loadEnvironment() {
+    //    uint32_t kEnvMapSize = 1024;
+    //    uint32_t kIrradianceMapSize = 32;
+    //    uint32_t kBRDF_LUT_Size = 256;
+    //    uint32_t kEnvMapLevels = std::floor(std::log2((std::max)(kEnvMapSize, kEnvMapSize))) + 1;
+    //    
+    //    // Environment map (with pre-filtered mip chain)
+    //    //ibl_textures.environmentCube = texture::createTexture(m_device, kEnvMapSize, kEnvMapSize, 6, VK_FORMAT_R16G16B16A16_SFLOAT, 0, VK_IMAGE_USAGE_STORAGE_BIT);
+    //    ibl_textures.environmentCube = texture::loadTextureCube("data/textures/papermill.ktx", VK_FORMAT_R16G16B16A16_SFLOAT, m_device);
+    //    // Irradiance map
+    //    //ibl_textures.irradianceCube = texture::createTexture(m_device, kIrradianceMapSize, kIrradianceMapSize, 6, VK_FORMAT_R16G16B16A16_SFLOAT, 1, VK_IMAGE_USAGE_STORAGE_BIT);
+    //    ibl_textures.irradianceCube = texture::loadTextureCube("data/textures/papermill.ktx", VK_FORMAT_R16G16B16A16_SFLOAT, m_device);
+    //    // 2D LUT for split-sum approximation
+    //    //ibl_textures.lutBrdf = texture::createTexture(m_device, kBRDF_LUT_Size, kBRDF_LUT_Size, 1, VK_FORMAT_R16G16_SFLOAT, 1, VK_IMAGE_USAGE_STORAGE_BIT);
+    //    ibl_textures.lutBrdf = texture::loadTexture("data/textures/empty.jpg", VK_FORMAT_R16G16B16A16_SFLOAT, m_device, 4, VK_FILTER_LINEAR);
+    //    // Create samplers.
+    //    VkSampler computeSampler = texture::createSampler(
+    //        m_device->getDevice(),
+    //        VK_FILTER_LINEAR,
+    //        VK_FILTER_LINEAR,
+    //        VK_SAMPLER_MIPMAP_MODE_LINEAR,
+    //        VK_SAMPLER_ADDRESS_MODE_REPEAT,
+    //        VK_SAMPLER_ADDRESS_MODE_REPEAT,
+    //        VK_SAMPLER_ADDRESS_MODE_REPEAT,
+    //        0.0,
+    //        VK_TRUE,
+    //        16.0f,
+    //        VK_FALSE,
+    //        VK_COMPARE_OP_ALWAYS,
+    //        0.0,
+    //        0.0,
+    //        VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
+    //        VK_FALSE);
+    //    ibl_textures.lutBrdf.sampler = texture::createSampler(
+    //        m_device->getDevice(),
+    //        VK_FILTER_LINEAR,
+    //        VK_FILTER_LINEAR,
+    //        VK_SAMPLER_MIPMAP_MODE_LINEAR,
+    //        VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+    //        VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+    //        VK_SAMPLER_ADDRESS_MODE_REPEAT,
+    //        0.0,
+    //        VK_FALSE,
+    //        16.0f,
+    //        VK_FALSE,
+    //        VK_COMPARE_OP_ALWAYS,
+    //        0.0,
+    //        FLT_MAX,
+    //        VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
+    //        VK_FALSE);
+    //    ibl_textures.lutBrdf.updateDescriptor();
+    //
+    //    // Create temporary descriptor pool for pre-processing compute shaders.
+    //    VkDescriptorPool computeDescriptorPool;
+    //    {
+    //        const std::array<VkDescriptorPoolSize, 2> poolSizes = { {
+    //            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 },
+    //            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, kEnvMapLevels },
+    //        } };
+    //
+    //        VkDescriptorPoolCreateInfo createInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+    //        createInfo.maxSets = 2;
+    //        createInfo.poolSizeCount = (uint32_t)poolSizes.size();
+    //        createInfo.pPoolSizes = poolSizes.data();
+    //        if (vkCreateDescriptorPool(m_device->getDevice(), &createInfo, nullptr, &computeDescriptorPool) != VK_SUCCESS) {
+    //            throw std::runtime_error("Failed to create setup descriptor pool");
+    //        }
+    //    }
+    //
+    //    // Friendly binding names for compute pipeline descriptor set
+    //    enum ComputeDescriptorSetBindingNames : uint32_t {
+    //        Binding_InputTexture = 0,
+    //        Binding_OutputTexture = 1,
+    //        Binding_OutputMipTail = 2,
+    //    };
+    //
+    //    // Create common descriptor set & pipeline layout for pre-processing compute shaders.
+    //    VkPipelineLayout computePipelineLayout;
+    //    VkDescriptorSet computeDescriptorSet;
+    //    {
+    //        const std::vector<DescriptorSetLayoutBinding> descriptorSetLayoutBindings = {
+    //            { Binding_InputTexture, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, &computeSampler },
+    //            { Binding_OutputTexture, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
+    //            { Binding_OutputMipTail, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, kEnvMapLevels - 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
+    //        };
+    //
+    //        descriptorSetLayouts.compute = renderer::createDescriptorSetLayout(m_device->getDevice(), { descriptorSetLayoutBindings });
+    //        computeDescriptorSet = renderer::createDescriptorSet(m_device->getDevice(), computeDescriptorPool, descriptorSetLayouts.compute);
+    //
+    //        const std::vector<VkDescriptorSetLayout> pipelineSetLayouts = {
+    //            descriptorSetLayouts.compute,
+    //        };
+    //        const std::vector<VkPushConstantRange> pipelinePushConstantRanges = {
+    //            { VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(SpecularFilterPushConstants) },
+    //        };
+    //        computePipelineLayout = renderer::createPipelineLayout(m_device->getDevice(), { pipelineSetLayouts }, { pipelinePushConstantRanges });
+    //    }
+    //
+    //    // Load & pre-process environment map.
+    //    {
+    //        //TextureObject envTextureUnfiltered = texture::createTexture(m_device, kEnvMapSize, kEnvMapSize, 6, VK_FORMAT_R16G16B16A16_SFLOAT, 0, VK_IMAGE_USAGE_STORAGE_BIT);
+    //        TextureObject envTextureUnfiltered = texture::loadTextureCube("data/textures/papermill.ktx", VK_FORMAT_R16G16B16A16_SFLOAT, m_device, VK_IMAGE_USAGE_STORAGE_BIT);
+    //        // Load & convert equirectangular envuronment map to cubemap texture
+    //        {
+    //            VkPipeline pipeline = renderer::createComputePipeline(m_device->getDevice(), "data/shaders/equirect2cube.comp.spv", computePipelineLayout);
+    //
+    //            // TODO : hdr
+    //            TextureObject envTextureEquirect = texture::loadTexture("data/textures/empty.jpg", VK_FORMAT_R16G16B16A16_SFLOAT, m_device, 4, VK_FILTER_LINEAR);
+    //            //texture::generateMipmaps(m_device, envTextureEquirect, VK_FORMAT_R32G32B32A32_SFLOAT);
+    //
+    //            const VkDescriptorImageInfo inputTexture = { VK_NULL_HANDLE, envTextureEquirect.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+    //            const VkDescriptorImageInfo outputTexture = { VK_NULL_HANDLE, envTextureUnfiltered.view, VK_IMAGE_LAYOUT_GENERAL };
+    //            {
+    //                VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+    //                writeDescriptorSet.dstSet = computeDescriptorSet;
+    //                writeDescriptorSet.dstBinding = Binding_InputTexture;
+    //                writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    //                writeDescriptorSet.descriptorCount = 1;
+    //                writeDescriptorSet.pImageInfo = &inputTexture;
+    //                vkUpdateDescriptorSets(m_device->getDevice(), 1, &writeDescriptorSet, 0, nullptr);
+    //            }
+    //            {
+    //                VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+    //                writeDescriptorSet.dstSet = computeDescriptorSet;
+    //                writeDescriptorSet.dstBinding = Binding_OutputTexture;
+    //                writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    //                writeDescriptorSet.descriptorCount = 1;
+    //                writeDescriptorSet.pImageInfo = &outputTexture;
+    //                vkUpdateDescriptorSets(m_device->getDevice(), 1, &writeDescriptorSet, 0, nullptr);
+    //            }
+    //
+    //            VkCommandBuffer commandBuffer = m_device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+    //            {
+    //                const auto preDispatchBarrier = ImageMemoryBarrier(envTextureUnfiltered, 0, VK_ACCESS_SHADER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL).mipLevels(0, 1);
+    //                vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, reinterpret_cast<const VkImageMemoryBarrier*>(&preDispatchBarrier));
+    //
+    //                vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+    //                vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, computePipelineLayout, 0, 1, &computeDescriptorSet, 0, nullptr);
+    //                vkCmdDispatch(commandBuffer, kEnvMapSize / 32, kEnvMapSize / 32, 6);
+    //
+    //                const auto postDispatchBarrier = ImageMemoryBarrier(envTextureUnfiltered, VK_ACCESS_SHADER_WRITE_BIT, 0, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL).mipLevels(0, 1);
+    //                vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, reinterpret_cast<const VkImageMemoryBarrier*>(&postDispatchBarrier));
+    //            }
+    //            m_device->executeImmediateCommandBuffer(commandBuffer);
+    //
+    //            vkDestroyPipeline(m_device->getDevice(), pipeline, nullptr);
+    //            envTextureEquirect.destroy(m_device->getDevice());
+    //
+    //            //texture::generateMipmaps(m_device, envTextureUnfiltered, VK_FORMAT_R16G16B16A16_SFLOAT);
+    //        }
+    //
+    //        // Compute pre-filtered specular environment map.
+    //        {
+    //            const uint32_t numMipTailLevels = kEnvMapLevels - 1;
+    //
+    //            VkPipeline pipeline;
+    //            {
+    //                const VkSpecializationMapEntry specializationMap = { 0, 0, sizeof(uint32_t) };
+    //                const uint32_t specializationData[] = { numMipTailLevels };
+    //
+    //                const VkSpecializationInfo specializationInfo = { 1, &specializationMap, sizeof(specializationData), specializationData };
+    //                pipeline = renderer::createComputePipeline(m_device->getDevice(), "data/shaders/spmap.comp.spv", computePipelineLayout, &specializationInfo);
+    //            }
+    //
+    //            VkCommandBuffer commandBuffer = m_device->beginImmediateCommandBuffer();
+    //
+    //            // Copy base mipmap level into destination environment map.
+    //            {
+    //                const std::vector<ImageMemoryBarrier> preCopyBarriers = {
+    //                    ImageMemoryBarrier(envTextureUnfiltered, 0, VK_ACCESS_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL).mipLevels(0, 1),
+    //                    ImageMemoryBarrier(ibl_textures.environmentCube, 0, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
+    //                };
+    //
+    //                const std::vector<ImageMemoryBarrier> postCopyBarriers = {
+    //                   ImageMemoryBarrier(envTextureUnfiltered, VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL).mipLevels(0, 1),
+    //                   ImageMemoryBarrier(ibl_textures.environmentCube, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_WRITE_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL),
+    //                };
+    //                
+    //                vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, reinterpret_cast<const VkImageMemoryBarrier*>(&preCopyBarriers));
+    //
+    //                VkImageCopy copyRegion{};
+    //                copyRegion.extent = { ibl_textures.environmentCube.width, ibl_textures.environmentCube.height, 1 };
+    //                copyRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    //                copyRegion.srcSubresource.layerCount = ibl_textures.environmentCube.layers;
+    //                copyRegion.dstSubresource = copyRegion.srcSubresource;
+    //                vkCmdCopyImage(commandBuffer,
+    //                    envTextureUnfiltered.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+    //                    ibl_textures.environmentCube.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+    //                    1, &copyRegion);
+    //               
+    //                vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, reinterpret_cast<const VkImageMemoryBarrier*>(&postCopyBarriers));
+    //            }
+    //
+    //            // Pre-filter rest of the mip-chain.
+    //            std::vector<VkImageView> envTextureMipTailViews;
+    //            {
+    //                std::vector<VkDescriptorImageInfo> envTextureMipTailDescriptors;
+    //                const VkDescriptorImageInfo inputTexture = { VK_NULL_HANDLE, envTextureUnfiltered.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+    //                {
+    //                    VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+    //                    writeDescriptorSet.dstSet = computeDescriptorSet;
+    //                    writeDescriptorSet.dstBinding = Binding_InputTexture;
+    //                    writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    //                    writeDescriptorSet.descriptorCount = 1;
+    //                    writeDescriptorSet.pImageInfo = &inputTexture;
+    //                    vkUpdateDescriptorSets(m_device->getDevice(), 1, &writeDescriptorSet, 0, nullptr);
+    //                }
+    //
+    //                for (uint32_t level = 1; level < kEnvMapLevels; ++level) {
+    //                    envTextureMipTailViews.push_back(renderer::createImageView(
+    //                        m_device->getDevice(),
+    //                        ibl_textures.environmentCube.image,
+    //                        (ibl_textures.environmentCube.layers == 6) ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D,
+    //                        VK_FORMAT_R16G16B16A16_SFLOAT,
+    //                        { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A },
+    //                        { VK_IMAGE_ASPECT_COLOR_BIT, level, 1, 0, VK_REMAINING_ARRAY_LAYERS }
+    //                    ));
+    //                    envTextureMipTailDescriptors.push_back(VkDescriptorImageInfo{ VK_NULL_HANDLE, envTextureMipTailViews[level - 1], VK_IMAGE_LAYOUT_GENERAL });
+    //                }
+    //                {
+    //                    VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+    //                    writeDescriptorSet.dstSet = computeDescriptorSet;
+    //                    writeDescriptorSet.dstBinding = Binding_OutputMipTail;
+    //                    writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    //                    writeDescriptorSet.descriptorCount = (uint32_t)envTextureMipTailDescriptors.size();
+    //                    writeDescriptorSet.pImageInfo = envTextureMipTailDescriptors.data();
+    //                    vkUpdateDescriptorSets(m_device->getDevice(), 1, &writeDescriptorSet, 0, nullptr);
+    //                }
+    //
+    //                vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+    //                vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, computePipelineLayout, 0, 1, &computeDescriptorSet, 0, nullptr);
+    //
+    //                const float deltaRoughness = 1.0f / (std::max)(float(numMipTailLevels), 1.0f);
+    //                for (uint32_t level = 1, size = kEnvMapSize / 2; level < kEnvMapLevels; ++level, size /= 2) {
+    //                    const uint32_t numGroups = (std::max<uint32_t>)(1, size / 32);
+    //
+    //                    const SpecularFilterPushConstants pushConstants = { level - 1, level * deltaRoughness };
+    //                    vkCmdPushConstants(commandBuffer, computePipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(SpecularFilterPushConstants), &pushConstants);
+    //                    vkCmdDispatch(commandBuffer, numGroups, numGroups, 6);
+    //                }
+    //
+    //                const auto barrier = ImageMemoryBarrier(ibl_textures.environmentCube, VK_ACCESS_SHADER_WRITE_BIT, 0, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    //                vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, reinterpret_cast<const VkImageMemoryBarrier*>(&barrier));
+    //            }
+    //
+    //            m_device->executeImmediateCommandBuffer(commandBuffer);
+    //
+    //            for (VkImageView mipTailView : envTextureMipTailViews) {
+    //                vkDestroyImageView(m_device->getDevice(), mipTailView, nullptr);
+    //            }
+    //            vkDestroyPipeline(m_device->getDevice(), pipeline, nullptr);
+    //            envTextureUnfiltered.destroy(m_device->getDevice());
+    //        }
+    //
+    //        // Compute diffuse irradiance cubemap
+    //        {
+    //            VkPipeline pipeline = renderer::createComputePipeline(m_device->getDevice(), "data/shaders/irmap.comp.spv", computePipelineLayout);
+    //
+    //            const VkDescriptorImageInfo inputTexture = { VK_NULL_HANDLE, ibl_textures.environmentCube.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+    //            const VkDescriptorImageInfo outputTexture = { VK_NULL_HANDLE, ibl_textures.irradianceCube.view, VK_IMAGE_LAYOUT_GENERAL };
+    //            {
+    //                VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+    //                writeDescriptorSet.dstSet = computeDescriptorSet;
+    //                writeDescriptorSet.dstBinding = Binding_InputTexture;
+    //                writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    //                writeDescriptorSet.descriptorCount = 1;
+    //                writeDescriptorSet.pImageInfo = &inputTexture;
+    //                vkUpdateDescriptorSets(m_device->getDevice(), 1, &writeDescriptorSet, 0, nullptr);
+    //            }
+    //
+    //            {
+    //                VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+    //                writeDescriptorSet.dstSet = computeDescriptorSet;
+    //                writeDescriptorSet.dstBinding = Binding_OutputTexture;
+    //                writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    //                writeDescriptorSet.descriptorCount = 1;
+    //                writeDescriptorSet.pImageInfo = &outputTexture;
+    //                vkUpdateDescriptorSets(m_device->getDevice(), 1, &writeDescriptorSet, 0, nullptr);
+    //            }
+    //
+    //            VkCommandBuffer commandBuffer = m_device->beginImmediateCommandBuffer();
+    //            {
+    //                const auto preDispatchBarrier = ImageMemoryBarrier(ibl_textures.irradianceCube, 0, VK_ACCESS_SHADER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+    //                vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, reinterpret_cast<const VkImageMemoryBarrier*>(&preDispatchBarrier));
+    //                vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+    //                vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, computePipelineLayout, 0, 1, &computeDescriptorSet, 0, nullptr);
+    //                vkCmdDispatch(commandBuffer, kIrradianceMapSize / 32, kIrradianceMapSize / 32, 6);
+    //
+    //                const auto postDispatchBarrier = ImageMemoryBarrier(ibl_textures.irradianceCube, VK_ACCESS_SHADER_WRITE_BIT, 0, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    //                vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, reinterpret_cast<const VkImageMemoryBarrier*>(&postDispatchBarrier));
+    //            }
+    //            m_device->executeImmediateCommandBuffer(commandBuffer);
+    //            vkDestroyPipeline(m_device->getDevice(), pipeline, nullptr);
+    //        }
+    //
+    //        // Compute Cook-Torrance BRDF 2D LUT for split-sum approximation.
+    //        {
+    //            VkPipeline pipeline = renderer::createComputePipeline(m_device->getDevice(), "data/shaders/spbrdf.comp.spv", computePipelineLayout);
+    //
+    //            const VkDescriptorImageInfo outputTexture = { ibl_textures.lutBrdf.sampler, ibl_textures.lutBrdf.view, VK_IMAGE_LAYOUT_GENERAL };
+    //            {
+    //                VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+    //                writeDescriptorSet.dstSet = computeDescriptorSet;
+    //                writeDescriptorSet.dstBinding = Binding_OutputTexture;
+    //                writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    //                writeDescriptorSet.descriptorCount = 1;
+    //                writeDescriptorSet.pImageInfo = &outputTexture;
+    //                vkUpdateDescriptorSets(m_device->getDevice(), 1, &writeDescriptorSet, 0, nullptr);
+    //            }
+    //
+    //            VkCommandBuffer commandBuffer = m_device->beginImmediateCommandBuffer();
+    //            {
+    //                const auto preDispatchBarrier = ImageMemoryBarrier(ibl_textures.lutBrdf, 0, VK_ACCESS_SHADER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+    //                vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, reinterpret_cast<const VkImageMemoryBarrier*>(&preDispatchBarrier));
+    //                vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+    //                vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, computePipelineLayout, 0, 1, &computeDescriptorSet, 0, nullptr);
+    //                vkCmdDispatch(commandBuffer, kBRDF_LUT_Size / 32, kBRDF_LUT_Size / 32, 6);
+    //
+    //                const auto postDispatchBarrier = ImageMemoryBarrier(ibl_textures.lutBrdf, VK_ACCESS_SHADER_WRITE_BIT, 0, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    //                vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, reinterpret_cast<const VkImageMemoryBarrier*>(&postDispatchBarrier));
+    //            }
+    //            m_device->executeImmediateCommandBuffer(commandBuffer);
+    //            vkDestroyPipeline(m_device->getDevice(), pipeline, nullptr);
+    //        }
+    //    }
+    //}
 
     void initUniformBuffers() {
         ubo.scene = buffer::createBuffer(
@@ -706,9 +623,9 @@ private:
             std::vector<DescriptorSetLayoutBinding> sceneLayoutBindings = {
                 { 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
                 { 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
-                { 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
-                { 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
-                { 4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+                //{ 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+                //{ 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+                //{ 4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
             };
             descriptorSetLayouts.scene = renderer::createDescriptorSetLayout(m_device->getDevice(), { sceneLayoutBindings });
         }
@@ -751,7 +668,7 @@ private:
         // Scene
         {
             descriptorSet.scene = renderer::createDescriptorSet(m_device->getDevice(), m_device->getDescriptorPool(), descriptorSetLayouts.scene);
-            std::array<VkWriteDescriptorSet, 5> writeDescriptorSets{};
+            std::array<VkWriteDescriptorSet, 2> writeDescriptorSets{};
 
             writeDescriptorSets[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             writeDescriptorSets[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -767,26 +684,26 @@ private:
             writeDescriptorSets[1].dstBinding = 1;
             writeDescriptorSets[1].pBufferInfo = &ubo.params.descriptor;
 
-            writeDescriptorSets[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            writeDescriptorSets[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            writeDescriptorSets[2].descriptorCount = 1;
-            writeDescriptorSets[2].dstSet = descriptorSet.scene;
-            writeDescriptorSets[2].dstBinding = 2;
-            writeDescriptorSets[2].pImageInfo = &ibl_textures.irradianceCube.descriptor;
-
-            writeDescriptorSets[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            writeDescriptorSets[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            writeDescriptorSets[3].descriptorCount = 1;
-            writeDescriptorSets[3].dstSet = descriptorSet.scene;
-            writeDescriptorSets[3].dstBinding = 3;
-            writeDescriptorSets[3].pImageInfo = &ibl_textures.environmentCube.descriptor;
-
-            writeDescriptorSets[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            writeDescriptorSets[4].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            writeDescriptorSets[4].descriptorCount = 1;
-            writeDescriptorSets[4].dstSet = descriptorSet.scene;
-            writeDescriptorSets[4].dstBinding = 4;
-            writeDescriptorSets[4].pImageInfo = &ibl_textures.lutBrdf.descriptor;
+            //writeDescriptorSets[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            //writeDescriptorSets[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            //writeDescriptorSets[2].descriptorCount = 1;
+            //writeDescriptorSets[2].dstSet = descriptorSet.scene;
+            //writeDescriptorSets[2].dstBinding = 2;
+            //writeDescriptorSets[2].pImageInfo = &ibl_textures.irradianceCube.descriptor;
+            //
+            //writeDescriptorSets[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            //writeDescriptorSets[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            //writeDescriptorSets[3].descriptorCount = 1;
+            //writeDescriptorSets[3].dstSet = descriptorSet.scene;
+            //writeDescriptorSets[3].dstBinding = 3;
+            //writeDescriptorSets[3].pImageInfo = &ibl_textures.environmentCube.descriptor;
+            //
+            //writeDescriptorSets[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            //writeDescriptorSets[4].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            //writeDescriptorSets[4].descriptorCount = 1;
+            //writeDescriptorSets[4].dstSet = descriptorSet.scene;
+            //writeDescriptorSets[4].dstBinding = 4;
+            //writeDescriptorSets[4].pImageInfo = &ibl_textures.lutBrdf.descriptor;
 
             vkUpdateDescriptorSets(m_device->getDevice(), static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, NULL);
         }
@@ -909,7 +826,7 @@ private:
 
         // Solid rendering pipeline
         std::vector<ShaderStage> shaderStages_mesh = renderer::createShader(m_device->getDevice(), "data/shaders/pbr.vert.spv", "data/shaders/pbr.frag.spv");
-        pipelines.solid = renderer::createGraphicsPipeline(m_device->getDevice(), m_pipelineCache, shaderStages_mesh, vertexInputState, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_renderPass);
+        pipelines.solid = renderer::createGraphicsPipeline(m_device->getDevice(), m_pipelineCache, shaderStages_mesh, vertexInputState, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_device->getRenderPass());
 
         // Skybox initPipelines
         //skybox.initPipelines(m_renderPass);
@@ -918,7 +835,7 @@ private:
         if (wireframe) {
             rasterizer.polygonMode = VK_POLYGON_MODE_LINE;
             rasterizer.lineWidth = 1.0f;
-            pipelines.wireframe= renderer::createGraphicsPipeline(m_device->getDevice(), m_pipelineCache, shaderStages_mesh, vertexInputState, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_renderPass);            
+            pipelines.wireframe= renderer::createGraphicsPipeline(m_device->getDevice(), m_pipelineCache, shaderStages_mesh, vertexInputState, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_device->getRenderPass());
         }
     }
 
@@ -931,7 +848,7 @@ private:
 
         VkRenderPassBeginInfo renderPassInfo{};
         renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        renderPassInfo.renderPass = m_renderPass;
+        renderPassInfo.renderPass = m_device->getRenderPass();
         renderPassInfo.renderArea.offset = { 0, 0 };
         renderPassInfo.renderArea.extent = m_device->getSwapChainExtent();
 
@@ -944,7 +861,7 @@ private:
 
         for (size_t i = 0; i < m_device->getCommandBuffers().size(); ++i)
         {
-            renderPassInfo.framebuffer = m_framebuffers[i];
+            renderPassInfo.framebuffer = m_device->getFramebuffers()[i];
             VkDeviceSize offsets[1] = { 0 };
 
             vkResetCommandBuffer(m_device->m_commandBuffers[i], 0);
@@ -1143,14 +1060,14 @@ private:
         vkDestroyDescriptorSetLayout(m_device->getDevice(), descriptorSetLayouts.materials, nullptr);
         vkDestroyDescriptorSetLayout(m_device->getDevice(), descriptorSetLayouts.node, nullptr);
         vkDestroyDescriptorSetLayout(m_device->getDevice(), descriptorSetLayouts.uniforms, nullptr);
-        vkDestroyDescriptorSetLayout(m_device->getDevice(), descriptorSetLayouts.compute, nullptr);
+        //vkDestroyDescriptorSetLayout(m_device->getDevice(), descriptorSetLayouts.compute, nullptr);
         vkDestroyBuffer(m_device->getDevice(), ubo.scene.buffer, nullptr);
         vkDestroyBuffer(m_device->getDevice(), ubo.params.buffer, nullptr);
-        for (auto framebuffer : m_framebuffers) {
+        for (auto framebuffer : m_device->getFramebuffers()) {
             vkDestroyFramebuffer(m_device->getDevice(), framebuffer, nullptr);
         }
         vkDestroyPipelineLayout(m_device->getDevice(), m_pipelineLayout, nullptr);
-        vkDestroyRenderPass(m_device->getDevice(), m_renderPass, nullptr);
+        vkDestroyRenderPass(m_device->getDevice(), m_device->getRenderPass(), nullptr);
     }
 
     void destroyBuffer(const VkDevice& device, Buffer buffer) const
