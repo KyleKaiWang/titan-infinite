@@ -10,6 +10,16 @@
 #include <optional>
 #include <fstream>
 
+#define VK_CHECK_RESULT(f)																				\
+{																										\
+	VkResult res = (f);																					\
+	if (res != VK_SUCCESS)																				\
+	{																									\
+		std::cout << "Fatal : VkResult is \"" << res << "\" in " << __FILE__ << " at line " << __LINE__ << "\n"; \
+		assert(res == VK_SUCCESS);																		\
+	}																									\
+}
+
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphicsFamily;
     std::optional<uint32_t> presentFamily;
@@ -116,5 +126,14 @@ namespace vkHelper {
         file.close();
 
         return buffer;
+    }
+
+    inline std::string getExtension(const std::string& filename)
+    {
+        auto dot_pos = filename.find_last_of('.');
+        if (dot_pos == std::string::npos) {
+            throw std::runtime_error{ "Filename has no extension" };
+        }
+        return filename.substr(dot_pos + 1);
     }
 }

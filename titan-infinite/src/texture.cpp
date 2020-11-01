@@ -18,20 +18,12 @@ namespace texture {
         VkFilter filter,
         VkImageUsageFlags imageUsageFlags,
         VkImageLayout imageLayout) {
-        TextureObject texObj;
-        int width, height, num_components, image_data_size;
-        bool is_hdr;
-        std::vector<unsigned char> pixels;
-        if (!texture::loadTextureData(filename.c_str(), num_requested_components, pixels, &width, &height, &num_components, &image_data_size, &is_hdr)) {
-            assert(false);
-        }
 
-        texObj.width = width;
-        texObj.height = height;
-        texObj.num_components = num_components;
-        texObj.is_hdr = is_hdr;
-        texObj.mipLevels = texture::numMipmapLevels(width, height);
-
+        // Load data, width, height and num_components
+        TextureObject texObj = load(filename);
+        texObj.device = device;
+        texObj.mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texObj.width, texObj.height)))) + 1;
+        auto image_data_size = texObj.data.size();
 
         VkFormatProperties formatProps;
         vkGetPhysicalDeviceFormatProperties(device->getPhysicalDevice(), format, &formatProps);
@@ -43,7 +35,7 @@ namespace texture {
             device->getDevice(),
             image_data_size,
             VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-            VK_SHARING_MODE_EXCLUSIVE
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
         );
 
         VkMemoryRequirements memReqs;
@@ -65,7 +57,7 @@ namespace texture {
         // copy texture data to staging buffer
         void* data;
         memory::map(device->getDevice(), stage_buffer_memory, 0, memReqs.size, &data);
-        memcpy(data, pixels.data(), image_data_size);
+        memcpy(data, texObj.data.data(), image_data_size);
         memory::unmap(device->getDevice(), stage_buffer_memory);
 
         // Image
@@ -79,7 +71,7 @@ namespace texture {
             1,
             VK_SAMPLE_COUNT_1_BIT,
             VK_IMAGE_TILING_OPTIMAL,
-            (imageUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT) ? imageUsageFlags : (imageUsageFlags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT),
+            (imageUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT) ? imageUsageFlags : (imageUsageFlags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT),
             VK_SHARING_MODE_EXCLUSIVE,
             VK_IMAGE_LAYOUT_UNDEFINED
         );
@@ -120,45 +112,58 @@ namespace texture {
             0,
             VK_ACCESS_TRANSFER_WRITE_BIT);
 
-        VkBufferImageCopy copy_region{};
-        copy_region.bufferOffset = 0;
-        copy_region.bufferRowLength = 0;
-        copy_region.bufferImageHeight = 0;
-        copy_region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        copy_region.imageSubresource.mipLevel = 0;
-        copy_region.imageSubresource.baseArrayLayer = 0;
-        copy_region.imageSubresource.layerCount = 1;
-        copy_region.imageOffset = { 0, 0, 0 };
-        copy_region.imageExtent = { texObj.width, texObj.height, 1 };
-
+        //Generate first one and setup each mipmap later
+        std::vector<VkBufferImageCopy> bufferImgCopyList;
+        for (uint32_t i = 0; i < 1; ++i)
+        {
+            VkBufferImageCopy copy_region{};
+            copy_region.bufferOffset = 0;
+            copy_region.bufferRowLength = 0;
+            copy_region.bufferImageHeight = 0;
+            copy_region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            copy_region.imageSubresource.mipLevel = i;
+            copy_region.imageSubresource.baseArrayLayer = 0;
+            copy_region.imageSubresource.layerCount = 1;
+            copy_region.imageOffset = { 0, 0, 0 };
+            copy_region.imageExtent = { 
+                static_cast<uint32_t>(texObj.width),
+                static_cast<uint32_t>(texObj.height),
+                1 
+            };
+            bufferImgCopyList.push_back(copy_region);
+        }
         /* Put the copy command into the command buffer */
         vkCmdCopyBufferToImage(
             copyCmd,
             stage_buffer,
             texObj.image,
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            1,
-            &copy_region
+            uint32_t(bufferImgCopyList.size()),
+            bufferImgCopyList.data()
         );
 
         /* Set the layout for the texture image from DESTINATION_OPTIMAL to SHADER_READ_ONLY */
         texObj.image_layout = imageLayout;
-        setImageLayout(
-            copyCmd,
-            texObj.image,
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            texObj.image_layout,
-            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-            subresourceRange,
-            VK_ACCESS_TRANSFER_WRITE_BIT,
-            VK_ACCESS_TRANSFER_READ_BIT
-        );
+
+        // 
+        //setImageLayout(
+        //    copyCmd,
+        //    texObj.image,
+        //    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        //    texObj.image_layout,
+        //    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+        //    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+        //    subresourceRange,
+        //    VK_ACCESS_TRANSFER_WRITE_BIT,
+        //    VK_ACCESS_TRANSFER_READ_BIT
+        //);
 
         device->flushCommandBuffer(copyCmd, device->getGraphicsQueue(), true);
 
         vkFreeMemory(device->getDevice(), stage_buffer_memory, NULL);
         vkDestroyBuffer(device->getDevice(), stage_buffer, NULL);
+
+        generateMipmaps(device, texObj, format);
 
         texObj.view = renderer::createImageView(device->getDevice(),
             texObj.image,
@@ -203,7 +208,7 @@ namespace texture {
 
         gli::texture_cube texCube(gli::load(filename));
         assert(!texCube.empty());
-
+        
         width = static_cast<uint32_t>(texCube.extent().x);
         height = static_cast<uint32_t>(texCube.extent().y);
         cube_size = texCube.size();
@@ -227,7 +232,7 @@ namespace texture {
             device->getDevice(),
             cube_size,
             VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-            VK_SHARING_MODE_EXCLUSIVE
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
         );
 
         VkMemoryRequirements memReqs;
@@ -283,6 +288,29 @@ namespace texture {
             throw std::runtime_error("Failed to bind image memory");
         }
 
+        std::vector<VkBufferImageCopy> bufferCopyRegions;
+        size_t offset = 0;
+        for (uint32_t layer = 0; layer < texCube.faces(); ++layer) {
+            for (uint32_t level = 0; level < mip_levels; ++level) {
+                VkBufferImageCopy copy_region{};
+                copy_region.bufferRowLength = 0;
+                copy_region.bufferImageHeight = 0;
+                copy_region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                copy_region.imageSubresource.mipLevel = level;
+                copy_region.imageSubresource.baseArrayLayer = layer;
+                copy_region.imageSubresource.layerCount = 1;
+                copy_region.imageOffset = { 0, 0, 0 };
+                copy_region.imageExtent = {
+                    static_cast<uint32_t>(texCube[layer][level].extent().x),
+                    static_cast<uint32_t>(texCube[layer][level].extent().y),
+                    1 };
+                copy_region.bufferOffset = offset;
+
+                bufferCopyRegions.push_back(copy_region);
+                offset += texCube[layer][level].size();
+            }
+        }
+
         VkImageSubresourceRange subresourceRange{};
         subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         subresourceRange.baseMipLevel = 0;
@@ -295,35 +323,11 @@ namespace texture {
             texObj.image,
             VK_IMAGE_LAYOUT_UNDEFINED,
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
             subresourceRange,
             0,
             VK_ACCESS_TRANSFER_WRITE_BIT);
-
-
-        std::vector<VkBufferImageCopy> bufferCopyRegions;
-        size_t offset = 0;
-        for (uint32_t face = 0; face < texCube.faces(); ++face) {
-            for (uint32_t level = 0; level < mip_levels; ++level) {
-                VkBufferImageCopy copy_region{};
-                copy_region.bufferRowLength = 0;
-                copy_region.bufferImageHeight = 0;
-                copy_region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                copy_region.imageSubresource.mipLevel = 0;
-                copy_region.imageSubresource.baseArrayLayer = 0;
-                copy_region.imageSubresource.layerCount = 1;
-                copy_region.imageOffset = { 0, 0, 0 };
-                copy_region.imageExtent = { 
-                    static_cast<uint32_t>(texCube[face][level].extent().x), 
-                    static_cast<uint32_t>(texCube[face][level].extent().y), 
-                    1 };
-                copy_region.bufferOffset = offset;
-
-                bufferCopyRegions.push_back(copy_region);
-                offset += texCube[face][level].size();
-            }
-        }
 
         /* Put the copy command into the command buffer */
         vkCmdCopyBufferToImage(
@@ -415,7 +419,7 @@ namespace texture {
             device->getDevice(),
             bufferSize,
             VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-            VK_SHARING_MODE_EXCLUSIVE
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
         );
 
         vkGetBufferMemoryRequirements(device->getDevice(), stagingBuffer, &memReqs);
@@ -626,45 +630,95 @@ namespace texture {
         image_memory_barrier.image = image;
         image_memory_barrier.subresourceRange = subresource_range;
 
-        switch (old_image_layout) {
-        case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-            image_memory_barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            break;
-
-        case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-            image_memory_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        switch (old_image_layout)
+        {
+        case VK_IMAGE_LAYOUT_UNDEFINED:
+            // Image layout is undefined (or does not matter)
+            // Only valid as initial layout
+            // No flags required, listed only for completeness
+            image_memory_barrier.srcAccessMask = 0;
             break;
 
         case VK_IMAGE_LAYOUT_PREINITIALIZED:
+            // Image is preinitialized
+            // Only valid as initial layout for linear images, preserves memory contents
+            // Make sure host writes have been finished
             image_memory_barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
             break;
 
+        case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+            // Image is a color attachment
+            // Make sure any writes to the color buffer have been finished
+            image_memory_barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+            // Image is a depth/stencil attachment
+            // Make sure any writes to the depth/stencil buffer have been finished
+            image_memory_barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+            // Image is a transfer source
+            // Make sure any reads from the image have been finished
+            image_memory_barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+            // Image is a transfer destination
+            // Make sure any writes to the image have been finished
+            image_memory_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+            // Image is read by a shader
+            // Make sure any shader reads from the image have been finished
+            image_memory_barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            break;
         default:
+            // Other source layouts aren't handled (yet)
             break;
         }
 
-        switch (new_image_layout) {
+        // Target layouts (new)
+        // Destination access mask controls the dependency for the new image layout
+        switch (new_image_layout)
+        {
         case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+            // Image will be used as a transfer destination
+            // Make sure any writes to the image have been finished
             image_memory_barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
             break;
 
         case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+            // Image will be used as a transfer source
+            // Make sure any reads from the image have been finished
             image_memory_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
             break;
 
-        case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-            image_memory_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            break;
-
         case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+            // Image will be used as a color attachment
+            // Make sure any writes to the color buffer have been finished
             image_memory_barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
             break;
 
         case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
-            image_memory_barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            // Image layout will be used as a depth/stencil attachment
+            // Make sure any writes to depth/stencil buffer have been finished
+            image_memory_barrier.dstAccessMask = image_memory_barrier.dstAccessMask | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
             break;
 
+        case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+            // Image will be read in a shader (sampler, input attachment)
+            // Make sure any writes to the image have been finished
+            if (image_memory_barrier.srcAccessMask == 0)
+            {
+                image_memory_barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+            }
+            image_memory_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            break;
         default:
+            // Other source layouts aren't handled (yet)
             break;
         }
         vkCmdPipelineBarrier(commandBuffer, src_stages, dest_stages, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
@@ -685,60 +739,69 @@ namespace texture {
             throw std::runtime_error("texture image format does not support linear blitting!");
         }
 
-        VkCommandBuffer blitCommand = device->beginImmediateCommandBuffer();
+        VkCommandBuffer commandBuffer = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+
+        VkImageMemoryBarrier barrier = {};
+        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.image = texture.image;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        barrier.subresourceRange.baseArrayLayer = 0;
+        barrier.subresourceRange.layerCount = 1;
+        barrier.subresourceRange.levelCount = 1;
 
         // Iterate through mip chain and consecutively blit from previous level to next level with linear filtering.
         for (uint32_t level = 1; level < texture.mipLevels; ++level) {
-            texture::setImageLayout(
-                blitCommand,
-                texture.image, 
-                VK_IMAGE_LAYOUT_UNDEFINED,
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                VK_PIPELINE_STAGE_TRANSFER_BIT, 
-                VK_PIPELINE_STAGE_TRANSFER_BIT, 
-                { VK_IMAGE_ASPECT_COLOR_BIT, level, 1, 0, 1 },
-                0,
-                VK_ACCESS_TRANSFER_WRITE_BIT
-            );
+            barrier.subresourceRange.baseMipLevel = level - 1;
+            barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            
+            vkCmdPipelineBarrier(commandBuffer,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                0, nullptr,
+                0, nullptr,
+                1, &barrier);
 
             VkImageBlit region{};
-            region.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level - 1, 0, texture.layers };
-            region.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level,   0, texture.layers };
+            region.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level - 1, 0, 1 };
+            region.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level,   0, 1 };
             region.srcOffsets[1] = { int32_t(texture.width >> (level - 1)),  int32_t(texture.height >> (level - 1)), 1 };
             region.dstOffsets[1] = { int32_t(texture.width >> (level)),  int32_t(texture.height >> (level)), 1 };
-            vkCmdBlitImage(blitCommand,
+            vkCmdBlitImage(commandBuffer,
                 texture.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                 texture.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                 1, &region, VK_FILTER_LINEAR);
 
-            texture::setImageLayout(
-                blitCommand,
-                texture.image,
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                VK_PIPELINE_STAGE_TRANSFER_BIT,
-                VK_PIPELINE_STAGE_TRANSFER_BIT,
-                { VK_IMAGE_ASPECT_COLOR_BIT, level, 1, 0, 1 },
-                VK_ACCESS_TRANSFER_WRITE_BIT,
-                VK_ACCESS_TRANSFER_READ_BIT
-            );
+            barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+            vkCmdPipelineBarrier(commandBuffer,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+                0, nullptr,
+                0, nullptr,
+                1, &barrier);
         }
 
         // Transition whole mip chain to shader read only layout.
         {
-            texture::setImageLayout(
-                blitCommand,
-                texture.image,
-                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                VK_PIPELINE_STAGE_TRANSFER_BIT,
-                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                { VK_IMAGE_ASPECT_COLOR_BIT, 0, texture.mipLevels, 0, 1 },
-                VK_ACCESS_TRANSFER_READ_BIT,
-                VK_ACCESS_SHADER_READ_BIT
-            );
+            barrier.subresourceRange.baseMipLevel = texture.mipLevels - 1;
+            barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+            vkCmdPipelineBarrier(commandBuffer,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+                0, nullptr,
+                0, nullptr,
+                1, &barrier);
         }
-        device->flushCommandBuffer(blitCommand, device->getGraphicsQueue(), true);
+        device->flushCommandBuffer(commandBuffer, device->getGraphicsQueue(), true);
     }
 
     bool loadTextureData(char const* filename,
@@ -810,6 +873,44 @@ namespace texture {
             std::memcpy(image_data.data(), stbi_data.get(), data_size);
             return true;
         }
+    }
+
+    TextureObject load(const std::string& filename)
+    {
+        TextureObject texObj{};
+        auto data = vkHelper::readFile(filename);
+        auto extension = vkHelper::getExtension(filename);
+
+        if (extension == "png" || extension == "jpg")
+        {
+            int width;
+            int height;
+            int comp;
+            int req_comp = 4;
+
+            auto data_buffer = reinterpret_cast<const stbi_uc*>(data.data());
+            auto data_size = static_cast<int>(data.size());
+            auto raw_data = stbi_load_from_memory(data_buffer, data_size, &width, &height, &comp, req_comp);
+
+            if (!raw_data) {
+                throw std::runtime_error{ "Failed to load " + filename + ": " + stbi_failure_reason() };
+            }
+
+            assert(texObj.data.empty() && "Image data already set");
+
+            texObj.data = { raw_data, raw_data + width * height * req_comp };
+            stbi_image_free(raw_data);
+
+            texObj.width = width;
+            texObj.height = height;
+            texObj.num_components = comp;
+            texObj.format = VK_FORMAT_R8G8B8A8_UNORM;
+        }
+        else if (extension == "ktx")
+        {
+        }
+
+        return texObj;
     }
 }
 

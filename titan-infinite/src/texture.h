@@ -9,6 +9,7 @@
 class TextureObject
 {
 public:
+    Device* device;
     VkSampler sampler;
     VkImageView view;
     VkImage image;
@@ -16,15 +17,21 @@ public:
     VkImageLayout image_layout;
     VkDeviceSize buffer_size;
     VkDescriptorImageInfo descriptor;
-    
-    bool is_hdr = false;
-    bool needs_staging;
+    VkFormat format{ VK_FORMAT_UNDEFINED };
+
+    bool is_hdr{false};
+    bool needs_staging{false};
 
     uint32_t width, height;
-    uint32_t num_components;
-    uint32_t layers = 1;
+    uint32_t num_components{4};
+    uint32_t layers{ 1 };
     uint32_t mipLevels;
-    
+
+    //offsets[array_layer][mipmap_layer]
+    std::vector<std::vector<VkDeviceSize>> offsets;
+    std::vector<uint8_t> data;
+
+public:
     int bytesPerPixel() const { return num_components * (is_hdr ? sizeof(float) : sizeof(unsigned char)); }
     int pitch() const { return width * bytesPerPixel(); }
     void updateDescriptor();
@@ -135,8 +142,8 @@ namespace texture {
         VkImage image,
         VkImageLayout old_image_layout, 
         VkImageLayout new_image_layout,
-        VkPipelineStageFlags src_stages,
-        VkPipelineStageFlags dest_stages, 
+        VkPipelineStageFlags src_stages = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+        VkPipelineStageFlags dest_stages = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
         VkImageSubresourceRange subresource_range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 },
         VkAccessFlags src_access_mask = 0,
         VkAccessFlags dst_access_mask = 0);
@@ -146,12 +153,5 @@ namespace texture {
         TextureObject& texture,
         VkFormat format);
 
-    template<typename T> static constexpr T numMipmapLevels(T width, T height)
-    {
-        T levels = 1;
-        while ((width | height) >> levels) {
-            ++levels;
-        }
-        return levels;
-    }
+    TextureObject load(const std::string& filename);
 }

@@ -153,6 +153,7 @@ VkCommandPool Device::createCommandPool(const VkDevice& device, uint32_t queueFa
     if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
         throw std::runtime_error("failed to create command pool!");
     }
+    return commandPool;
 }
 
 void Device::destroyCommandPool() {

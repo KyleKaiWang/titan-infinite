@@ -42,8 +42,10 @@ void Buffer::destroy()
     if (mapped) {
         memory::unmap(device, memory);
     }
-    vkDestroyBuffer(device, buffer, nullptr);
-    vkFreeMemory(device, memory, nullptr);
+    if(buffer)
+        vkDestroyBuffer(device, buffer, nullptr);
+    if(memory)
+        vkFreeMemory(device, memory, nullptr);
     buffer = VK_NULL_HANDLE;
     memory = VK_NULL_HANDLE;
 }

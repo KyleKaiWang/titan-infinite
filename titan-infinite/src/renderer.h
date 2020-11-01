@@ -100,7 +100,8 @@ namespace renderer {
         VkImageViewType viewType,
         VkFormat format,
         const VkComponentMapping& components,
-        const VkImageSubresourceRange& subresourceRange);
+        const VkImageSubresourceRange& subresourceRange,
+        VkImageViewCreateFlags flags = 0);
 
     VkRenderPass createRenderPass(const VkDevice& device,
         const std::vector<VkAttachmentDescription>& attachmentDescriptions,

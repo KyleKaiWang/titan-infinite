@@ -9,7 +9,8 @@
 
 namespace renderer {
 
-    VkImage createImage(const VkDevice& device,
+    VkImage createImage(
+        const VkDevice& device,
         VkImageCreateFlags flags,
         VkImageType imageType,
         VkFormat format,
@@ -44,14 +45,17 @@ namespace renderer {
         return image;
     }
 
-    VkImageView createImageView(const VkDevice& device,
+    VkImageView createImageView(
+        const VkDevice& device,
         VkImage image,
         VkImageViewType viewType,
         VkFormat format,
         const VkComponentMapping& components,
-        const VkImageSubresourceRange& subresourceRange) {
+        const VkImageSubresourceRange& subresourceRange,
+        VkImageViewCreateFlags flags) {
         VkImageViewCreateInfo viewInfo{};
         viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        viewInfo.flags = flags;
         viewInfo.image = image;
         viewInfo.viewType = viewType;
         viewInfo.format = format;
@@ -65,7 +69,8 @@ namespace renderer {
         return imageView;
     }
 
-    VkRenderPass createRenderPass(const VkDevice& device,
+    VkRenderPass createRenderPass(
+        const VkDevice& device,
         const std::vector<VkAttachmentDescription>& attachmentDescriptions,
         const std::vector<SubpassDescription>& subpassDescriptions,
         const std::vector<VkSubpassDependency>& subpassDependency) {
@@ -104,7 +109,8 @@ namespace renderer {
         return renderPass;
     }
 
-    VkFramebuffer createFramebuffer(const VkDevice& device,
+    VkFramebuffer createFramebuffer(
+        const VkDevice& device,
         const VkRenderPass& renderPass,
         const std::vector<VkImageView>& imageViews,
         VkExtent2D extent,
