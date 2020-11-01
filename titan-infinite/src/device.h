@@ -71,6 +71,15 @@ struct Device {
     VkDevice m_device;
     VkSurfaceKHR m_surface;
 
+    struct Depthbuffer {
+        VkImage image;
+        VkDeviceMemory imageMemory;
+        VkImageView imageView;
+    }m_depthbuffer;
+
+    VkRenderPass m_renderPass;
+    std::vector<VkFramebuffer> m_framebuffers;
+
     VkQueue m_graphicsQueue;
     VkQueue m_presentQueue;
 
@@ -83,6 +92,9 @@ struct Device {
     VkQueue getGraphicsQueue() const { return m_graphicsQueue; }
     VkQueue getPresentQueue() const { return m_presentQueue; }
     Window* getWindow() { return m_window; }
+    VkRenderPass getRenderPass() { return m_renderPass; }
+    const Depthbuffer& getDepthbuffer() const { return m_depthbuffer; }
+    const std::vector<VkFramebuffer>& getFramebuffers() const { return m_framebuffers; }
 
     void create(Window* window);
     void destroy();
@@ -106,6 +118,10 @@ struct Device {
     void flushCommandBuffer(const VkCommandBuffer& commandBuffer, const VkQueue& queue, bool free = true);
     VkCommandBuffer beginImmediateCommandBuffer();
     void executeImmediateCommandBuffer(VkCommandBuffer commandBuffer);
+
+    void createDepthbuffer();
+    void createRenderPass();
+    void createFramebuffer();
 
     std::vector<const char*> getRequiredExtensions();
     void pickPhysicalDevice();

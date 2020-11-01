@@ -26,6 +26,10 @@ void Device::create(Window* window) {
     createSwapChain(m_physicalDevice, m_device, m_surface);
     m_commandPool = createCommandPool(m_device, vkHelper::findQueueFamilies(m_physicalDevice, m_surface).graphicsFamily.value());
     m_commandBuffers = createCommandBuffers(m_device, m_commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, (uint32_t)m_images.size());
+
+    createDepthbuffer();
+    createRenderPass();
+    createFramebuffer();
 }
 
 void Device::destroy() {
@@ -217,6 +221,80 @@ void Device::createInstance() {
     // Create the Vulkan instance.
     if (vkCreateInstance(&createInfo, nullptr, &m_instance) != VK_SUCCESS) {
         throw std::runtime_error("failed to create instance!");
+    }
+}
+
+void Device::createDepthbuffer() {
+    auto depthFormat = vkHelper::findDepthFormat(m_physicalDevice);
+    m_depthbuffer.image = renderer::createImage(m_device, 0, VK_IMAGE_TYPE_2D, depthFormat, { WIDTH, HEIGHT, 1 }, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED);
+
+    VkMemoryRequirements memRequirements = memory::getMemoryRequirements(m_device, m_depthbuffer.image);
+    m_depthbuffer.imageMemory = memory::allocate(m_device, memRequirements.size, findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+    memory::bind(m_device, m_depthbuffer.imageMemory, 0, m_depthbuffer.image);
+    m_depthbuffer.imageView = renderer::createImageView(
+        m_device,
+        m_depthbuffer.image,
+        VK_IMAGE_VIEW_TYPE_2D,
+        depthFormat,
+        { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A },
+        { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 });
+}
+
+void Device::createRenderPass() {
+    VkAttachmentDescription colorAttachment{};
+    colorAttachment.format = getSwapChainImageFormat();
+    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    VkAttachmentDescription depthAttachment{};
+    depthAttachment.format = vkHelper::findDepthFormat(getPhysicalDevice());
+    depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    std::vector<VkAttachmentDescription> attachmentDesc{ colorAttachment, depthAttachment };
+
+    VkAttachmentReference colorAttachmentRef{};
+    colorAttachmentRef.attachment = 0;
+    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    std::vector<VkAttachmentReference> colorAttachmentRefs{ colorAttachmentRef };
+
+    VkAttachmentReference depthAttachmentRef{};
+    depthAttachmentRef.attachment = 1;
+    depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    SubpassDescription subpass{};
+    subpass.colorAttachments = colorAttachmentRefs;
+    subpass.depthStencilAttachment = depthAttachmentRef;
+
+    std::vector<SubpassDescription> subpassDesc{ subpass };
+
+    VkSubpassDependency dependency{};
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependency.dstSubpass = 0;
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.srcAccessMask = 0;
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    std::vector<VkSubpassDependency> dependencies{ dependency };
+
+    m_renderPass = renderer::createRenderPass(m_device, attachmentDesc, subpassDesc, dependencies);
+}
+
+void Device::createFramebuffer() {
+    std::vector<VkImageView> imageViews = getSwapChainimageViews();
+    m_framebuffers.resize(imageViews.size());
+    for (std::size_t i = 0; i < getSwapChainimages().size(); ++i) {
+        m_framebuffers[i] = renderer::createFramebuffer(m_device, m_renderPass, { imageViews[i], m_depthbuffer.imageView }, getSwapChainExtent(), 1);
     }
 }
 
