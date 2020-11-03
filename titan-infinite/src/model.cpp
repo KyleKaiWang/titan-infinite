@@ -262,16 +262,17 @@ void VulkanglTFModel::loadFromFile(const std::string& filename, Device* _device,
 			vertexBuffer.data());
 
 		// Index data
-		buffer::createBuffer(
-			device,
-			indexBufferSize,
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			VK_SHARING_MODE_EXCLUSIVE,
-			&indexStaging.buffer,
-			&indexStaging.memory,
-			indexBuffer.data());
-
+		if (indexBufferSize > 0) {
+			buffer::createBuffer(
+				device,
+				indexBufferSize,
+				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+				VK_SHARING_MODE_EXCLUSIVE,
+				&indexStaging.buffer,
+				&indexStaging.memory,
+				indexBuffer.data());
+		}
 		// Create device local buffers (target)
 		buffer::createBuffer(
 			device,
@@ -282,15 +283,16 @@ void VulkanglTFModel::loadFromFile(const std::string& filename, Device* _device,
 			&vertices.buffer,
 			&vertices.memory);
 
-
-		buffer::createBuffer(
-			device,
-			indexBufferSize,
-			VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			VK_SHARING_MODE_EXCLUSIVE,
-			&indices.buffer,
-			&indices.memory);
+		if (indexBufferSize > 0) {
+			buffer::createBuffer(
+				device,
+				indexBufferSize,
+				VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+				VK_SHARING_MODE_EXCLUSIVE,
+				&indices.buffer,
+				&indices.memory);
+		}
 
 		// Copy from staging buffers
 		VkCommandBuffer copyCmd = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);

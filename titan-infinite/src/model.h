@@ -5,6 +5,7 @@
  */
 
 #pragma once
+#define MAX_NUM_JOINTS 128
 
 namespace vkglTF {
 
@@ -119,7 +120,7 @@ namespace vkglTF {
 
 		struct UniformBlock {
 			glm::mat4 matrix;
-			glm::mat4 jointMatrix[64]{};
+			glm::mat4 jointMatrix[MAX_NUM_JOINTS]{};
 			float jointcount{ 0 };
 		} uniformBlock;
 

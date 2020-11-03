@@ -137,7 +137,7 @@ private:
 
         // Camera
         m_camera = new Camera();
-        m_camera->distance = 5.0f;
+        m_camera->distance = 1.0f;
         m_camera->fov = 45.0f;
         m_camera->type = Camera::CameraType::lookat;
         m_camera->setPerspective(45.0f, (float)WIDTH / (float)HEIGHT, 0.1f, 1000.0f);
@@ -680,7 +680,14 @@ private:
         m_device->m_currentFrame = (m_device->m_currentFrame + 1) % 2;
         
         // Update Animation
-        meshModel.updateAnimation(animationIndex, frameTimer);
+        if ((animate) && (meshModel.animations.size() > 0)) {
+            animationTimer += frameTimer;
+            if (animationTimer > meshModel.animations[animationIndex].end) {
+                animationTimer -= meshModel.animations[animationIndex].end;
+            }
+            meshModel.updateAnimation(animationIndex, animationTimer);
+        }
+        //meshModel.updateAnimation(animationIndex, frameTimer);
         updateUniformBuffer();
     }
 
