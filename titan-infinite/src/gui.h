@@ -37,6 +37,7 @@ public:
 
 	std::vector<VkPipelineShaderStageCreateInfo> shaders;
 
+	VkRenderPass imGuiRenderPass;
 	VkDescriptorPool descriptorPool;
 	VkDescriptorSetLayout descriptorSetLayout;
 	VkDescriptorSet descriptorSet;
@@ -48,6 +49,9 @@ public:
 	VkImageView fontView = VK_NULL_HANDLE;
 	VkSampler sampler;
 
+	ImGui_ImplVulkanH_Window g_MainWindowData;
+	int g_MinImageCount = 2;
+
 	struct PushConstBlock {
 		glm::vec2 scale;
 		glm::vec2 translate;
@@ -56,10 +60,12 @@ public:
 	bool visible = true;
 	bool updated = false;
 	float scale = 1.0f;
+	bool show_demo_window = true;
 
 	void initResources(Device* device);
-	void initPipeline(const VkPipelineCache pipelineCache, const VkRenderPass renderPass);
+	void initPipeline();
 
+	void beginUpdate();
 	bool update();
 	void draw(const VkCommandBuffer commandBuffer);
 	void resize(uint32_t width, uint32_t height);

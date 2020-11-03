@@ -6,33 +6,29 @@
 #include "pch.h"
 #include "gui.h"
 
-Gui::Gui()
+void check_vk_result(VkResult err)
 {
-	// Init ImGui
-	ImGui::CreateContext();
-
-	// Dimensions
-	ImGuiIO& io = ImGui::GetIO();
-	io.FontGlobalScale = scale;
-	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;       // Enable Keyboard Controls
-	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;        // Enable Gamepad Controls
-	//io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;           // Enable Docking
-	//io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;         // Enable Multi-Viewport / Platform Windows
-	//io.ConfigFlags |= ImGuiConfigFlags_ViewportsNoTaskBarIcons;
-	//io.ConfigFlags |= ImGuiConfigFlags_ViewportsNoMerge;
-
-	ImGui::StyleColorsDark();
-	// Color scheme
-	ImGuiStyle& style = ImGui::GetStyle();
-	
-	if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-	{
-		style.WindowRounding = 0.0f;
-		style.Colors[ImGuiCol_WindowBg].w = 1.0f;
-	}
+	if (err == 0)
+		return;
+	fprintf(stderr, "[vulkan] Error: VkResult = %d\n", err);
+	if (err < 0)
+		abort();
 }
 
-Gui::~Gui() { }
+Gui::Gui()
+{
+}
+
+Gui::~Gui() 
+{
+	auto err = vkDeviceWaitIdle(device->getDevice());
+	check_vk_result(err);
+	ImGui_ImplVulkan_Shutdown();
+	ImGui_ImplGlfw_Shutdown();
+	ImGui::DestroyContext();
+
+	ImGui_ImplVulkanH_DestroyWindow(device->getInstance(), device->getDevice(), &g_MainWindowData, nullptr);
+}
 
 /** Prepare all vulkan resources required to render the UI overlay */
 void Gui::initResources(Device* device)
@@ -41,166 +37,261 @@ void Gui::initResources(Device* device)
 	this->queue = device->getGraphicsQueue();
 	auto glfwWindow = device->getWindow()->getNativeWindow();
 
+	// Init ImGui
+	ImGui::CreateContext();
+
+	// Dimensions
+	ImGuiIO& io = ImGui::GetIO();
+	io.FontGlobalScale = scale;
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;       // Enable Keyboard Controls
+	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;           // Enable Docking
+	io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;         // Enable Multi-Viewport / Platform Windows
+	//io.ConfigViewportsNoAutoMerge = true;
+	//io.ConfigViewportsNoTaskBarIcon = true;
+
+	// Setup Dear ImGui style
+	ImGui::StyleColorsDark();
+
+	// When viewports are enabled we tweak WindowRounding/WindowBg so platform windows can look identical to regular ones.
+	ImGuiStyle& style = ImGui::GetStyle();
+	if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+	{
+		style.WindowRounding = 0.0f;
+		style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+	}
+
+	// Setup Platform/Renderer bindings
 	ImGui_ImplGlfw_InitForVulkan(glfwWindow, true);
 
-	ImGuiIO& io = ImGui::GetIO();
+	//// Create font texture
+	//unsigned char* fontData;
+	//int texWidth, texHeight;
+	//
+	//io.Fonts->GetTexDataAsRGBA32(&fontData, &texWidth, &texHeight);
+	//VkDeviceSize uploadSize = texWidth * texHeight * 4 * sizeof(char);
+	//
+	//// Create target image for copy
+	//fontImage = renderer::createImage(
+	//	device->getDevice(),
+	//	0,
+	//	VK_IMAGE_TYPE_2D,
+	//	VK_FORMAT_R8G8B8A8_UNORM,
+	//	{ (uint32_t)texWidth, (uint32_t)texHeight, 1 },
+	//	1,
+	//	1,
+	//	VK_SAMPLE_COUNT_1_BIT,
+	//	VK_IMAGE_TILING_OPTIMAL,
+	//	VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+	//	VK_SHARING_MODE_EXCLUSIVE,
+	//	VK_IMAGE_LAYOUT_UNDEFINED
+	//);
+	//
+	//VkMemoryRequirements memReqs;
+	//vkGetImageMemoryRequirements(device->getDevice(), fontImage, &memReqs);
+	//
+	//VkMemoryAllocateInfo allocInfo{};
+	//allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	//allocInfo.allocationSize = memReqs.size;
+	//allocInfo.memoryTypeIndex = device->findMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	//
+	//if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &fontMemory) != VK_SUCCESS) {
+	//	throw std::runtime_error("Failed to allocate buffer memory!");
+	//}
+	//
+	//if (vkBindImageMemory(device->getDevice(), fontImage, fontMemory, 0) != VK_SUCCESS) {
+	//	throw std::runtime_error("Failed to bind image memory");
+	//}
+	//
+	//fontView = renderer::createImageView(
+	//	device->getDevice(), 
+	//	fontImage, 
+	//	VK_IMAGE_VIEW_TYPE_2D, 
+	//	VK_FORMAT_R8G8B8A8_UNORM,
+	//	{ VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A }, 
+	//	{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}
+	//);
+	//
+	//// Staging buffers for font data upload
+	//Buffer stagingBuffer;
+	//stagingBuffer = buffer::createBuffer(
+	//	device, 
+	//	uploadSize,
+	//	VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+	//	VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+	//);
+	//
+	//stagingBuffer.map();
+	//memcpy(stagingBuffer.mapped, fontData, uploadSize);
+	//stagingBuffer.unmap();
+	//
+	//// Copy buffer data to font image
+	//VkCommandBuffer copyCmd = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+	//
+	//// Prepare for transfer
+	//texture::setImageLayout(
+	//	copyCmd,
+	//	fontImage,
+	//	VK_IMAGE_LAYOUT_UNDEFINED,
+	//	VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+	//	VK_PIPELINE_STAGE_HOST_BIT,
+	//	VK_PIPELINE_STAGE_TRANSFER_BIT
+	//);
+	//
+	//// Copy
+	//VkBufferImageCopy bufferCopyRegion = {};
+	//bufferCopyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	//bufferCopyRegion.imageSubresource.layerCount = 1;
+	//bufferCopyRegion.imageExtent.width = texWidth;
+	//bufferCopyRegion.imageExtent.height = texHeight;
+	//bufferCopyRegion.imageExtent.depth = 1;
+	//
+	//vkCmdCopyBufferToImage(
+	//	copyCmd,
+	//	stagingBuffer.buffer,
+	//	fontImage,
+	//	VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+	//	1,
+	//	&bufferCopyRegion
+	//);
+	//
+	//// Prepare for shader read
+	//texture::setImageLayout(
+	//	copyCmd,
+	//	fontImage,
+	//	VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+	//	VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	//	VK_PIPELINE_STAGE_TRANSFER_BIT,
+	//	VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+	//
+	//device->flushCommandBuffer(copyCmd, queue, true);
+	//
+	//stagingBuffer.destroy();
+	//
+	//// Font texture Sampler
+	//sampler = texture::createSampler(device->getDevice(),
+	//	VK_FILTER_LINEAR,
+	//	VK_FILTER_LINEAR,
+	//	VK_SAMPLER_MIPMAP_MODE_LINEAR,
+	//	VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+	//	VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+	//	VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+	//	0.0,
+	//	VK_TRUE,
+	//	1.0f,
+	//	VK_FALSE,
+	//	VK_COMPARE_OP_NEVER,
+	//	0.0,
+	//	1,
+	//	VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
+	//	VK_FALSE);
+	//
+	//// Descriptor pool
+	//std::vector<VkDescriptorPoolSize> poolSizes = {
+	//	{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 }
+	//};
+	//descriptorPool = device->createDescriptorPool(device->getDevice(), poolSizes, 2);
+	//
+	//// Descriptor set layout
+	//std::vector<DescriptorSetLayoutBinding> setLayoutBindings = {
+	//	{ 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr }
+	//};
+	//descriptorSetLayout = renderer::createDescriptorSetLayout(device->getDevice(), { setLayoutBindings });
+	//
+	//// Descriptor set
+	//descriptorSet = renderer::createDescriptorSet(device->getDevice(), descriptorPool, descriptorSetLayout);
+	//
+	//
+	//VkDescriptorImageInfo fontDescriptor =
+	//{
+	//	sampler,
+	//	fontView,
+	//	VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+	//};
+	//
+	//VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+	//writeDescriptorSet.dstSet = descriptorSet;
+	//writeDescriptorSet.dstBinding = 0;
+	//writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	//writeDescriptorSet.descriptorCount = 1;
+	//writeDescriptorSet.pImageInfo = &fontDescriptor;
+	//vkUpdateDescriptorSets(device->getDevice(), 1,&writeDescriptorSet, 0, nullptr);
 
-	// Create font texture
-	unsigned char* fontData;
-	int texWidth, texHeight;
-	
-	io.Fonts->GetTexDataAsRGBA32(&fontData, &texWidth, &texHeight);
-	VkDeviceSize uploadSize = texWidth * texHeight * 4 * sizeof(char);
+	// Setup vulkan for imgui
+	ImGui_ImplVulkan_InitInfo init_info{};
+	init_info.Instance = device->getInstance();
+	init_info.PhysicalDevice = device->getPhysicalDevice();
+	init_info.Device = device->getDevice();
 
-	// Create target image for copy
-	fontImage = renderer::createImage(
-		device->getDevice(),
-		0,
-		VK_IMAGE_TYPE_2D,
-		VK_FORMAT_R8G8B8A8_UNORM,
-		{ (uint32_t)texWidth, (uint32_t)texHeight, 1 },
-		1,
-		1,
-		VK_SAMPLE_COUNT_1_BIT,
-		VK_IMAGE_TILING_OPTIMAL,
-		VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-		VK_SHARING_MODE_EXCLUSIVE,
-		VK_IMAGE_LAYOUT_UNDEFINED
-	);
-
-	VkMemoryRequirements memReqs;
-	vkGetImageMemoryRequirements(device->getDevice(), fontImage, &memReqs);
-	
-	VkMemoryAllocateInfo allocInfo{};
-	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	allocInfo.allocationSize = memReqs.size;
-	allocInfo.memoryTypeIndex = device->findMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-	if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &fontMemory) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to allocate buffer memory!");
-	}
-
-	if (vkBindImageMemory(device->getDevice(), fontImage, fontMemory, 0) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to bind image memory");
-	}
-
-	fontView = renderer::createImageView(
-		device->getDevice(), 
-		fontImage, 
-		VK_IMAGE_VIEW_TYPE_2D, 
-		VK_FORMAT_R8G8B8A8_UNORM,
-		{ VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A }, 
-		{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}
-	);
-
-	// Staging buffers for font data upload
-	Buffer stagingBuffer;
-	stagingBuffer = buffer::createBuffer(
-		device, 
-		uploadSize,
-		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-	);
-
-	stagingBuffer.map();
-	memcpy(stagingBuffer.mapped, fontData, uploadSize);
-	stagingBuffer.unmap();
-
-	// Copy buffer data to font image
-	VkCommandBuffer copyCmd = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
-
-	// Prepare for transfer
-	texture::setImageLayout(
-		copyCmd,
-		fontImage,
-		VK_IMAGE_LAYOUT_UNDEFINED,
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		VK_PIPELINE_STAGE_HOST_BIT,
-		VK_PIPELINE_STAGE_TRANSFER_BIT
-	);
-
-	// Copy
-	VkBufferImageCopy bufferCopyRegion = {};
-	bufferCopyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	bufferCopyRegion.imageSubresource.layerCount = 1;
-	bufferCopyRegion.imageExtent.width = texWidth;
-	bufferCopyRegion.imageExtent.height = texHeight;
-	bufferCopyRegion.imageExtent.depth = 1;
-
-	vkCmdCopyBufferToImage(
-		copyCmd,
-		stagingBuffer.buffer,
-		fontImage,
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		1,
-		&bufferCopyRegion
-	);
-
-	// Prepare for shader read
-	texture::setImageLayout(
-		copyCmd,
-		fontImage,
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		VK_PIPELINE_STAGE_TRANSFER_BIT,
-		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-
-	device->flushCommandBuffer(copyCmd, queue, true);
-
-	stagingBuffer.destroy();
-
-	// Font texture Sampler
-	sampler = texture::createSampler(device->getDevice(),
-		VK_FILTER_LINEAR,
-		VK_FILTER_LINEAR,
-		VK_SAMPLER_MIPMAP_MODE_LINEAR,
-		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-		0.0,
-		VK_TRUE,
-		1.0f,
-		VK_FALSE,
-		VK_COMPARE_OP_NEVER,
-		0.0,
-		1,
-		VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
-		VK_FALSE);
-
-	// Descriptor pool
-	std::vector<VkDescriptorPoolSize> poolSizes = {
-		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 }
-	};
-	descriptorPool = device->createDescriptorPool(device->getDevice(), poolSizes, 2);
-
-	// Descriptor set layout
-	std::vector<DescriptorSetLayoutBinding> setLayoutBindings = {
-		{ 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr }
-	};
-	descriptorSetLayout = renderer::createDescriptorSetLayout(device->getDevice(), { setLayoutBindings });
-
-	// Descriptor set
-	descriptorSet = renderer::createDescriptorSet(device->getDevice(), descriptorPool, descriptorSetLayout);
-
-
-	VkDescriptorImageInfo fontDescriptor =
+	uint32_t queueFamily = (uint32_t)-1;
+	// Select graphics queue family
 	{
-		sampler,
-		fontView,
-		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-	};
+		uint32_t count;
+		vkGetPhysicalDeviceQueueFamilyProperties(device->getPhysicalDevice(), &count, NULL);
+		VkQueueFamilyProperties* queues = (VkQueueFamilyProperties*)malloc(sizeof(VkQueueFamilyProperties) * count);
+		vkGetPhysicalDeviceQueueFamilyProperties(device->getPhysicalDevice(), &count, queues);
+		for (uint32_t i = 0; i < count; i++)
+			if (queues[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
+			{
+				queueFamily = i;
+				break;
+			}
+		free(queues);
+		IM_ASSERT(queueFamily != (uint32_t)-1);
+	}
 
-	VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-	writeDescriptorSet.dstSet = descriptorSet;
-	writeDescriptorSet.dstBinding = 0;
-	writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	writeDescriptorSet.descriptorCount = 1;
-	writeDescriptorSet.pImageInfo = &fontDescriptor;
-	vkUpdateDescriptorSets(device->getDevice(), 1,&writeDescriptorSet, 0, nullptr);
+	init_info.QueueFamily = queueFamily;
+	init_info.Queue = device->getGraphicsQueue();
+	init_info.PipelineCache = device->getPipelineCache();
+	init_info.DescriptorPool = descriptorPool;
+	init_info.Allocator = nullptr;
+	init_info.MinImageCount = g_MinImageCount;
+	init_info.ImageCount = device->getSwapChainimages().size();
+	init_info.CheckVkResultFn = check_vk_result;
+
+	VkAttachmentDescription attachment = {};
+	attachment.format = device->getSwapChainImageFormat();
+	attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+	attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+	attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	attachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+	VkAttachmentReference color_attachment = {};
+	color_attachment.attachment = 0;
+	color_attachment.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	VkSubpassDescription subpass = {};
+	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpass.colorAttachmentCount = 1;
+	subpass.pColorAttachments = &color_attachment;
+
+	VkSubpassDependency dependency = {};
+	dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+	dependency.dstSubpass = 0;
+	dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependency.srcAccessMask = 0;  // or VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+	VkRenderPassCreateInfo info = {};
+	info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	info.attachmentCount = 1;
+	info.pAttachments = &attachment;
+	info.subpassCount = 1;
+	info.pSubpasses = &subpass;
+	info.dependencyCount = 1;
+	info.pDependencies = &dependency;
+	if (vkCreateRenderPass(device->getDevice(), &info, nullptr, &imGuiRenderPass) != VK_SUCCESS) {
+		throw std::runtime_error("Could not create Dear ImGui's render pass");
+	}
+	ImGui_ImplVulkan_Init(&init_info, imGuiRenderPass);
 }
 
 /** Prepare a separate pipeline for the UI overlay rendering decoupled from the main application */
-void Gui::initPipeline(const VkPipelineCache pipelineCache, const VkRenderPass renderPass)
+void Gui::initPipeline()
 {
 	// Pipeline layout
 	// Push constants for UI rendering parameters
@@ -215,8 +306,8 @@ void Gui::initPipeline(const VkPipelineCache pipelineCache, const VkRenderPass r
 	inputAssembly.primitiveRestartEnable = VK_FALSE;
 
 	ViewportState viewport{};
-	viewport.topX = 0;
-	viewport.topY = 0;
+	viewport.x = 0;
+	viewport.y = 0;
 	viewport.width = device->getSwapChainExtent().width;
 	viewport.height = device->getSwapChainExtent().height;
 
@@ -225,7 +316,7 @@ void Gui::initPipeline(const VkPipelineCache pipelineCache, const VkRenderPass r
 	rasterizer.rasterizerDiscardEnable = VK_FALSE;
 	rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
 	rasterizer.lineWidth = 1.0f;
-	rasterizer.cullMode = VK_CULL_MODE_NONE;;
+	rasterizer.cullMode = VK_CULL_MODE_NONE;
 	rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	rasterizer.depthBiasEnable = VK_FALSE;
 
@@ -252,11 +343,11 @@ void Gui::initPipeline(const VkPipelineCache pipelineCache, const VkRenderPass r
 	DepthStencilState depthStencil{};
 	depthStencil.depthTestEnable = VK_FALSE;
 	depthStencil.depthWriteEnable = VK_FALSE;
-	depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+	depthStencil.depthCompareOp = VK_COMPARE_OP_ALWAYS;
 	depthStencil.depthBoundsTestEnable = VK_FALSE;
 	depthStencil.stencilTestEnable = VK_FALSE;
-	depthStencil.back.compareOp = VK_COMPARE_OP_ALWAYS;
 	depthStencil.front = depthStencil.back;
+	depthStencil.back.compareOp = VK_COMPARE_OP_ALWAYS;
 
 	MultisampleState multisampling{};
 	multisampling.sampleShadingEnable = VK_FALSE;
@@ -291,7 +382,7 @@ void Gui::initPipeline(const VkPipelineCache pipelineCache, const VkRenderPass r
 
 	pipeline = renderer::createGraphicsPipeline(
 		device->getDevice(), 
-		pipelineCache,
+		device->getPipelineCache(),
 		shaderStages,
 		vertexInputState, 
 		inputAssembly, 
@@ -302,7 +393,16 @@ void Gui::initPipeline(const VkPipelineCache pipelineCache, const VkRenderPass r
 		colorBlending, 
 		dynamicState, 
 		pipelineLayout,
-		renderPass);
+		imGuiRenderPass);
+}
+
+void Gui::beginUpdate()
+{
+	// Start the Dear ImGui frame
+	ImGui_ImplVulkan_NewFrame();
+	ImGui_ImplGlfw_NewFrame();
+	ImGui::NewFrame();
+	ImGui::ShowDemoWindow(&show_demo_window);
 }
 
 /** Update vertex and index buffer containing the imGui elements when required */
@@ -413,7 +513,7 @@ void Gui::resize(uint32_t width, uint32_t height)
 
 void Gui::freeResources()
 {
-	ImGui::DestroyContext();
+	//ImGui::DestroyContext();
 	vertexBuffer.destroy();
 	indexBuffer.destroy();
 	vkDestroyImageView(device->getDevice(), fontView, nullptr);
