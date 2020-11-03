@@ -30,16 +30,35 @@ void Device::create(Window* window) {
     createDepthbuffer();
     createRenderPass();
     createFramebuffer();
+    // Pipeline Cache
+    {
+        VkPipelineCacheCreateInfo pipelineCacheCreateInfo{};
+        pipelineCacheCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+        vkCreatePipelineCache(m_device, &pipelineCacheCreateInfo, nullptr, &m_pipelineCache);
+    }
 }
 
 void Device::destroy() {
+    vkDestroyImageView(m_device, m_depthbuffer.imageView, nullptr);
+    vkDestroyImage(m_device, m_depthbuffer.image, nullptr);
+    vkFreeMemory(m_device, m_depthbuffer.imageMemory, nullptr);
+    for (auto framebuffer : m_framebuffers)
+        vkDestroyFramebuffer(m_device, framebuffer, nullptr);
+    vkFreeCommandBuffers(m_device, m_commandPool, static_cast<uint32_t>(m_commandBuffers.size()), m_commandBuffers.data());
+    vkDestroyRenderPass(m_device, m_renderPass, nullptr);
+    destroySwapChain();
+    destroyDescriptorPool();
+    for (int i = 0; i < waitFences.size(); i++)
+        vkDestroyFence(m_device, waitFences[i], nullptr);
+    for (int i = 0; i < m_imageAvailableSemaphores.size(); i++)
+        vkDestroySemaphore(m_device, m_imageAvailableSemaphores[i], nullptr);
+    for (int i = 0; i < m_renderFinishedSemaphores.size(); i++)
+        vkDestroySemaphore(m_device, m_renderFinishedSemaphores[i], nullptr);
+    destroyCommandPool();
+    vkDestroyDevice(m_device, nullptr);
     if (enableValidationLayers) {
         vkHelper::DestroyDebugUtilsMessengerEXT(m_instance, debugMessenger, nullptr);
     }
-    destroyDescriptorPool();
-    destroyCommandPool();
-    destroySwapChain();
-    vkDestroyDevice(m_device, nullptr);
     vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
     vkDestroyInstance(m_instance, nullptr);
 }
@@ -110,25 +129,22 @@ void Device::createSwapChain(const VkPhysicalDevice& physicalDevice, VkDevice de
     }
 
     // Sync object
-    m_cmdBufExecutedFences.resize(imageCount);
-    m_imageAvailableSemaphores.resize(imageCount);
-    m_renderFinishedSemaphores.resize(imageCount);
+    m_imageAvailableSemaphores.resize(renderAhead);
+    m_renderFinishedSemaphores.resize(renderAhead);
+    waitFences.resize(renderAhead);
     m_imagesInFlight.resize(m_images.size(), VK_NULL_HANDLE);
 
-    for (uint32_t i = 0; i < imageCount; ++i) {
-        VkSemaphoreCreateInfo semaphoreInfo{};
-        semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    VkSemaphoreCreateInfo semaphoreInfo{};
+    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
-        VkFenceCreateInfo fenceInfo{};
-        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-
-        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &m_imageAvailableSemaphores[i]) != VK_SUCCESS ||
-                vkCreateSemaphore(device, &semaphoreInfo, nullptr, &m_renderFinishedSemaphores[i]) != VK_SUCCESS ||
-                vkCreateFence(device, &fenceInfo, nullptr, &m_cmdBufExecutedFences[i]) != VK_SUCCESS) {
-                throw std::runtime_error("failed to create synchronization objects for a frame!");
-            }
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    for (size_t i = 0; i < renderAhead; ++i) {
+        if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &m_imageAvailableSemaphores[i]) != VK_SUCCESS ||
+            vkCreateSemaphore(device, &semaphoreInfo, nullptr, &m_renderFinishedSemaphores[i]) != VK_SUCCESS ||
+            vkCreateFence(device, &fenceInfo, nullptr, &waitFences[i]) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create synchronization objects for a frame!");
         }
     }
 }
@@ -136,14 +152,7 @@ void Device::createSwapChain(const VkPhysicalDevice& physicalDevice, VkDevice de
 void Device::destroySwapChain() {
     for (auto imageView : m_imageViews) {
         vkDestroyImageView(m_device, imageView, nullptr);
-    }
-
-    for (int i = 0; i < m_cmdBufExecutedFences.size(); i++)
-    {
-        vkDestroyFence(m_device, m_cmdBufExecutedFences[i], nullptr);
-        vkDestroySemaphore(m_device, m_imageAvailableSemaphores[i], nullptr);
-        vkDestroySemaphore(m_device, m_renderFinishedSemaphores[i], nullptr);
-    }
+    }  
     vkDestroySwapchainKHR(m_device, m_swapChain, nullptr);
 }
 
@@ -160,8 +169,7 @@ VkCommandPool Device::createCommandPool(const VkDevice& device, uint32_t queueFa
     return commandPool;
 }
 
-void Device::destroyCommandPool() {
-    vkFreeCommandBuffers(m_device, m_commandPool, static_cast<uint32_t>(m_commandBuffers.size()), m_commandBuffers.data());
+void Device::destroyCommandPool() {    
     vkDestroyCommandPool(m_device, m_commandPool, NULL);
 }
 

@@ -203,7 +203,7 @@ namespace vkglTF {
 		glm::vec2 uv1;
 		glm::vec4 joint0;
 		glm::vec4 weight0;
-		glm::vec4 tangent;
+		//glm::vec4 tangent;
 	};
 
 	enum FileLoadingFlags {
@@ -257,6 +257,7 @@ namespace vkglTF {
 		bool buffersBound = false;
 		std::string path;
 
+		void destroy();
 		void loadFromFile(const std::string& filename, Device* device, VkQueue transferQueue, uint32_t fileLoadingFlags = vkglTF::FileLoadingFlags::None, float scale = 1.0f);
 		void loadNode(vkglTF::Node* parent, const tinygltf::Node& node, uint32_t nodeIndex, const tinygltf::Model& model, std::vector<uint32_t>& indexBuffer, std::vector<Vertex>& vertexBuffer, float globalscale);
 		void loadSkins(tinygltf::Model& gltfModel);

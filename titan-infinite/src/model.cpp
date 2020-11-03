@@ -138,6 +138,9 @@ VulkanglTFModel::VulkanglTFModel()
 
 VulkanglTFModel::~VulkanglTFModel()
 {
+}
+void VulkanglTFModel::destroy()
+{
 	vkDestroyBuffer(device->getDevice(), vertices.buffer, nullptr);
 	vkFreeMemory(device->getDevice(), vertices.memory, nullptr);
 	vkDestroyBuffer(device->getDevice(), indices.buffer, nullptr);
@@ -460,8 +463,7 @@ TextureObject VulkanglTFModel::fromglTfImage(tinygltf::Image& gltfimage, Device*
 	VK_CHECK_RESULT(vkAllocateMemory(device->getDevice(), &memAllocInfo, nullptr, &texObj.image_memory));
 	VK_CHECK_RESULT(vkBindImageMemory(device->getDevice(), texObj.image, texObj.image_memory, 0));
 
-	//VkCommandBuffer copyCmd = device->createCommandBuffer(device->getDevice(), device->getCommandPool(), VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
-	VkCommandBuffer copyCmd = device->beginImmediateCommandBuffer();
+	VkCommandBuffer copyCmd = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
 
 	VkImageSubresourceRange subresourceRange = {};
 	subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -503,15 +505,13 @@ TextureObject VulkanglTFModel::fromglTfImage(tinygltf::Image& gltfimage, Device*
 		vkCmdPipelineBarrier(copyCmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
 	}
 
-	//device->flushCommandBuffer(device->getDevice(), copyCmd, copyQueue, device->getCommandPool(), true);
-	device->executeImmediateCommandBuffer(copyCmd);
+	device->flushCommandBuffer(copyCmd, device->getGraphicsQueue(), true);
 
 	vkFreeMemory(device->getDevice(), stagingMemory, nullptr);
 	vkDestroyBuffer(device->getDevice(), stagingBuffer, nullptr);
 
 	// Generate the mip chain (glTF uses jpg and png, so we need to create this manually)
-	//VkCommandBuffer blitCmd = device->createCommandBuffer(device->getDevice(), device->getCommandPool(), VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
-	VkCommandBuffer blitCmd = device->beginImmediateCommandBuffer();
+	VkCommandBuffer blitCmd = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
 	for (uint32_t i = 1; i < texObj.mipLevels; i++) {
 		VkImageBlit imageBlit{};
 
@@ -577,8 +577,7 @@ TextureObject VulkanglTFModel::fromglTfImage(tinygltf::Image& gltfimage, Device*
 		vkCmdPipelineBarrier(blitCmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
 	}
 
-	//device->flushCommandBuffer(device->getDevice(), blitCmd, copyQueue, device->getCommandPool(), true);
-	device->executeImmediateCommandBuffer(blitCmd);
+	device->flushCommandBuffer(copyCmd, device->getGraphicsQueue(), true);
 
 	VkSamplerCreateInfo samplerInfo{};
 	samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;

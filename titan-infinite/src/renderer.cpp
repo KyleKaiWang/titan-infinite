@@ -246,18 +246,19 @@ namespace renderer {
         inputAssembly.primitiveRestartEnable = inputAssemblyState.primitiveRestartEnable;
 
         VkViewport viewport{};
-        viewport.x = static_cast<float>(viewportState.topX);
-        viewport.y = static_cast<float>(viewportState.topY) + static_cast<float>(viewportState.height);
+        viewport.x = static_cast<float>(viewportState.x);
+        viewport.y = static_cast<float>(viewportState.y);
         viewport.width = static_cast<float>(viewportState.width);
-        viewport.height = -static_cast<float>(viewportState.height);
+        //viewport.height = -static_cast<float>(viewportState.height);
+        viewport.height = static_cast<float>(viewportState.height);
         viewport.minDepth = 0.0f;
         viewport.maxDepth = 1.0f;
 
         VkRect2D scissor{};
         scissor.extent.width = (uint32_t)(viewportState.width);
         scissor.extent.height = (uint32_t)(viewportState.height);
-        scissor.offset.x = viewportState.topX;
-        scissor.offset.y = viewportState.topY;
+        scissor.offset.x = viewportState.x;
+        scissor.offset.y = viewportState.y;
 
         VkPipelineViewportStateCreateInfo pipelineViewport{};
         pipelineViewport.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;

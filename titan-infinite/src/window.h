@@ -8,21 +8,23 @@
 #include <GLFW/glfw3.h>
 #include "camera.h"
 
-const int DisplaySamples = 16;
-const float ViewDistance = 5.0f;
-const float ViewFOV = 45.0f;
+//const int DisplaySamples = 16;
+//const float ViewDistance = 5.0f;
+//const float ViewFOV = 45.0f;
 const float OrbitSpeed = 1.0f;
 const float ZoomSpeed = 1.0f;
 
 struct Window {
 	GLFWwindow* m_window;
 
-    Camera m_camera;
+    Camera* m_camera;
     SceneSettings m_sceneSettings;
     InputMode m_mode = InputMode::None;
 
     double m_prevCursorX = 0.0;
     double m_prevCursorY = 0.0;
+    double m_currCursorX = 0.0;
+    double m_currCursorY = 0.0;
 
     bool m_framebufferResized = false;
 
@@ -31,10 +33,16 @@ struct Window {
     bool getFramebufferResized() { return m_framebufferResized; }
     void setFramebufferResized(bool resized) { m_framebufferResized = resized; }
 
-    const Camera& getCamera() { return m_camera; }
+    void setCamera(Camera* camera) { m_camera = camera; }
+    Camera* getCamera() { return m_camera; }
     SceneSettings getSceneSettings() { return m_sceneSettings; }
+    std::pair<double, double> getCurCursorPos() { return { m_currCursorX, m_currCursorY }; }
 
     void create(uint32_t width, uint32_t height) {
+        
+        // Should call SetCamera() from outside first
+        assert(m_camera);
+
         // Create an GLFW window that supports Vulkan rendering.
         if (!glfwInit()) {
             std::cout << "Could not initialize GLFW." << std::endl;
@@ -54,9 +62,6 @@ struct Window {
         glfwSetMouseButtonCallback(m_window, mouseButtonCallback);
         glfwSetScrollCallback(m_window, mouseScrollCallback);
         glfwSetKeyCallback(m_window, keyCallback);
-
-        m_camera.distance = ViewDistance;
-        m_camera.fov = ViewFOV;
     }
 
     void destroy() {
@@ -72,6 +77,8 @@ struct Window {
     static void mousePositionCallback(GLFWwindow* window, double xpos, double ypos) {
         Window* self = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
         if (self->m_mode != InputMode::None) {
+            self->m_currCursorX = xpos;
+            self->m_currCursorY = ypos;
             const double dx = xpos - self->m_prevCursorX;
             const double dy = ypos - self->m_prevCursorY;
 
@@ -81,8 +88,8 @@ struct Window {
                 self->m_sceneSettings.pitch += OrbitSpeed * float(dy);
                 break;
             case InputMode::RotatingCamera:
-                self->m_camera.yaw += OrbitSpeed * float(dx);
-                self->m_camera.pitch += OrbitSpeed * float(dy);
+                self->m_camera->yaw += OrbitSpeed * float(dx);
+                self->m_camera->pitch += OrbitSpeed * float(dy);
                 break;
             }
 
@@ -121,9 +128,9 @@ struct Window {
 
     static void mouseScrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
         Window* self = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
-        self->m_camera.distance += ZoomSpeed * float(-yoffset);
-        if (self->m_camera.distance < 0.0f)
-            self->m_camera.distance = 0.0f;
+        self->m_camera->distance += ZoomSpeed * float(-yoffset);
+        if (self->m_camera->distance < 0.0f)
+            self->m_camera->distance = 0.0f;
     }
 
     static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {

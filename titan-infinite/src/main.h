@@ -23,12 +23,12 @@
 #include <glm/gtx/euler_angles.hpp>
 #include <vulkan/vulkan.hpp>
 #include "gui.h"
+#include "animation.h"
 
 class Application {
 public:
     Application() {}
     ~Application() {
-        m_device->destroy();
         delete m_device;
         m_window->destroy();
         delete m_window;
@@ -43,13 +43,13 @@ public:
 private:
     Window* m_window;
     Device* m_device;
+    Camera* m_camera;
 
     struct DescriptorSets {
         VkDescriptorSet scene;
-    }descriptorSet;
+    };
 
     VkPipelineLayout m_pipelineLayout;
-    VkPipelineCache m_pipelineCache;
 
     // glTF
     vkglTF::VulkanglTFModel meshModel;
@@ -68,21 +68,24 @@ private:
         VkDescriptorSetLayout scene;
         VkDescriptorSetLayout materials;
         VkDescriptorSetLayout node;
-        VkDescriptorSetLayout compute;
-        VkDescriptorSetLayout uniforms;
+        //VkDescriptorSetLayout compute;
+        //VkDescriptorSetLayout uniforms;
     } descriptorSetLayouts;
 
     struct UniformBufferSet {
         Buffer scene;
         Buffer params;
-    }ubo;
+    };
     
     struct UBOMatrices {
+        glm::mat4 projection;
         glm::mat4 model;
         glm::mat4 view;
-        glm::mat4 proj;
-        //glm::mat4 sceneRotationMatrix;
+        glm::vec3 camPos;
     }shaderValuesScene;
+
+    std::vector<DescriptorSets> descriptorSets;
+    std::vector<UniformBufferSet> uniformBuffers;
 
     struct shaderValuesParams {
         glm::vec4 lightDir = glm::vec4(10.0f, 10.0f, 10.0f, 1.0f);
@@ -130,7 +133,7 @@ private:
     };
 
     // GUI
-    Gui gui;
+    //Gui gui;
 
     // Mesuring frame time
     float frameTimer = 1.0f;
@@ -144,15 +147,29 @@ private:
 
     void initResource() {
 
+        // Camera
+        m_camera = new Camera();
+        m_camera->distance = 5.0f;
+        m_camera->fov = 45.0f;
+        m_camera->type = Camera::CameraType::lookat;
+        m_camera->setPerspective(45.0f, (float)WIDTH / (float)HEIGHT, 0.1f, 1000.0f);
+        m_camera->rotationSpeed = 0.25f;
+        m_camera->movementSpeed = 0.1f;
+        m_camera->setPosition({ 0.0f, 0.0f, m_camera->distance });
+        m_camera->setRotation({ 0.0f, 0.0f, 0.0f });
+
         // glfw window
         m_window = new Window();
+        m_window->setCamera(m_camera);
         m_window->create(WIDTH, HEIGHT);
         
         // Physical, Logical Device and Surface
         m_device = new Device();
         m_device->create(m_window);
 
-        initGUI();
+        uniformBuffers.resize(m_device->getSwapChainimages().size());
+        descriptorSets.resize(m_device->getSwapChainimages().size());
+
         loadAssets();
 
         // TODO : skip for skybox, put it back later 
@@ -164,18 +181,13 @@ private:
         initDescriptorSet();
         initPipelines();
         buildCommandBuffers();
+        //initGUI();
     }
 
-    void initGUI() {
-        // Pipeline Cache
-        {
-            VkPipelineCacheCreateInfo pipelineCacheCreateInfo{};
-            pipelineCacheCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
-            vkCreatePipelineCache(m_device->getDevice(), &pipelineCacheCreateInfo, nullptr, &m_pipelineCache);
-        }
-        gui.initResources(m_device);
-        gui.initPipeline(m_pipelineCache, m_device->getRenderPass());
-    }
+    //void initGUI() {
+    //    gui.initResources(m_device);
+    //    gui.initPipeline();
+    //}
 
     void loadAssets() {
         meshModel.loadFromFile("data/models/glTF-Embedded/CesiumMan.gltf", m_device, m_device->getGraphicsQueue());
@@ -535,32 +547,32 @@ private:
     //}
 
     void initUniformBuffers() {
-        ubo.scene = buffer::createBuffer(
-            m_device,
-            sizeof(shaderValuesScene),
-            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-        );
-        memory::map(m_device->getDevice(), ubo.scene.memory, 0, VK_WHOLE_SIZE, &ubo.scene.mapped);
-        ubo.params = buffer::createBuffer(
-            m_device,
-            sizeof(shaderValuesParams),
-            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-        );
-        memory::map(m_device->getDevice(), ubo.params.memory, 0, VK_WHOLE_SIZE, &ubo.params.mapped);
+
+        for (auto& uniformBuffer : uniformBuffers) {
+            uniformBuffer.scene = buffer::createBuffer(
+                m_device,
+                sizeof(shaderValuesScene),
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+            );
+            memory::map(m_device->getDevice(), uniformBuffer.scene.memory, 0, VK_WHOLE_SIZE, &uniformBuffer.scene.mapped);
+            uniformBuffer.params = buffer::createBuffer(
+                m_device,
+                sizeof(shaderValuesParams),
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+            );
+            memory::map(m_device->getDevice(), uniformBuffer.params.memory, 0, VK_WHOLE_SIZE, &uniformBuffer.params.mapped);
+        }
         updateUniformBuffer();
     }
 
     void updateUniformBuffer() {
-        // Scene Rotation
-        //glm::mat4 sceneRotationMatrix = glm::mat4(1.0f);
-        //sceneRotationMatrix = glm::rotate(sceneRotationMatrix, glm::radians(m_window->getSceneSettings().pitch), glm::vec3(1.0f, 0.0f, 0.0f));
-        //sceneRotationMatrix = glm::rotate(sceneRotationMatrix, glm::radians(m_window->getSceneSettings().yaw), glm::vec3(0.0f, 1.0f, 0.0f));
-        //sceneRotationMatrix = glm::rotate(sceneRotationMatrix, glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        //shaderValuesScene.sceneRotationMatrix = sceneRotationMatrix;
 
         // Scene
+        shaderValuesScene.projection = m_camera->matrices.perspective;
+        shaderValuesScene.view = m_camera->matrices.view;
+
         float scale = (1.0f / (std::max)(meshModel.aabb[0][0], (std::max)(meshModel.aabb[1][1], meshModel.aabb[2][2]))) * 0.5f;
         glm::vec3 translate = -glm::vec3(meshModel.aabb[3][0], meshModel.aabb[3][1], meshModel.aabb[3][2]);
         translate += -0.5f * glm::vec3(meshModel.aabb[0][0], meshModel.aabb[1][1], meshModel.aabb[2][2]);
@@ -571,12 +583,11 @@ private:
         shaderValuesScene.model[2][2] = scale;
         shaderValuesScene.model = glm::translate(shaderValuesScene.model, translate);
 
-        shaderValuesScene.view = glm::lookAt(glm::vec3(0.0f, 0.0f, m_window->getCamera().distance), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-        shaderValuesScene.proj = glm::perspective(m_window->getCamera().fov, m_device->getSwapChainExtent().width / (float)m_device->getSwapChainExtent().height, 0.1f, 10.0f);
-        shaderValuesScene.proj[1][1] *= -1;
-
-        memcpy(ubo.scene.mapped, &shaderValuesScene, sizeof(shaderValuesScene));
-        memcpy(ubo.scene.mapped, &shaderValuesParams, sizeof(shaderValuesParams));
+        shaderValuesScene.camPos = glm::vec3(
+            -m_camera->position.z * sin(glm::radians(m_camera->rotation.y)) * cos(glm::radians(m_camera->rotation.x)),
+            -m_camera->position.z * sin(glm::radians(m_camera->rotation.x)),
+            m_camera->position.z * cos(glm::radians(m_camera->rotation.y)) * cos(glm::radians(m_camera->rotation.x))
+        );
 
         // Skybox
         //skybox.updateUniformBuffer();
@@ -666,23 +677,23 @@ private:
     void initDescriptorSet()
     {   
         // Scene
-        {
-            descriptorSet.scene = renderer::createDescriptorSet(m_device->getDevice(), m_device->getDescriptorPool(), descriptorSetLayouts.scene);
+        for (auto i = 0; i < descriptorSets.size(); i++) {
+            descriptorSets[i].scene = renderer::createDescriptorSet(m_device->getDevice(), m_device->getDescriptorPool(), descriptorSetLayouts.scene);
             std::array<VkWriteDescriptorSet, 2> writeDescriptorSets{};
 
             writeDescriptorSets[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             writeDescriptorSets[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             writeDescriptorSets[0].descriptorCount = 1;
-            writeDescriptorSets[0].dstSet = descriptorSet.scene;
+            writeDescriptorSets[0].dstSet = descriptorSets[i].scene;
             writeDescriptorSets[0].dstBinding = 0;
-            writeDescriptorSets[0].pBufferInfo = &ubo.scene.descriptor;
+            writeDescriptorSets[0].pBufferInfo = &uniformBuffers[i].scene.descriptor;
 
             writeDescriptorSets[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             writeDescriptorSets[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             writeDescriptorSets[1].descriptorCount = 1;
-            writeDescriptorSets[1].dstSet = descriptorSet.scene;
+            writeDescriptorSets[1].dstSet = descriptorSets[i].scene;
             writeDescriptorSets[1].dstBinding = 1;
-            writeDescriptorSets[1].pBufferInfo = &ubo.params.descriptor;
+            writeDescriptorSets[1].pBufferInfo = &uniformBuffers[i].params.descriptor;
 
             //writeDescriptorSets[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             //writeDescriptorSets[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -766,8 +777,8 @@ private:
             { 
                 {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(vkglTF::Vertex, pos)},
                 {1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(vkglTF::Vertex, normal)},
-                {2, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(vkglTF::Vertex, uv0)},
-                {3, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(vkglTF::Vertex, uv1)},
+                {2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(vkglTF::Vertex, uv0)},
+                {3, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(vkglTF::Vertex, uv1)},
                 {4, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(vkglTF::Vertex, joint0)},
                 {5, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(vkglTF::Vertex, weight0)}
             }
@@ -778,8 +789,8 @@ private:
         inputAssembly.primitiveRestartEnable = VK_FALSE;
 
         ViewportState viewport{};
-        viewport.topX = 0;
-        viewport.topY = 0;
+        viewport.x = 0;
+        viewport.y = 0;
         viewport.width = m_device->getSwapChainExtent().width;
         viewport.height = m_device->getSwapChainExtent().height;
 
@@ -802,6 +813,8 @@ private:
         depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         depthStencil.depthBoundsTestEnable = VK_FALSE;
         depthStencil.stencilTestEnable = VK_FALSE;
+        depthStencil.front = depthStencil.back;
+        depthStencil.back.compareOp = VK_COMPARE_OP_ALWAYS;
 
         VkPipelineColorBlendAttachmentState colorBlendAttachment{};
         colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
@@ -822,11 +835,11 @@ private:
         VkPipelineDynamicStateCreateInfo dynamicState{};
         dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
         dynamicState.pDynamicStates = dynamicStates.data();
-        dynamicState.dynamicStateCount = 0;
+        dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());;
 
         // Solid rendering pipeline
         std::vector<ShaderStage> shaderStages_mesh = renderer::createShader(m_device->getDevice(), "data/shaders/pbr.vert.spv", "data/shaders/pbr.frag.spv");
-        pipelines.solid = renderer::createGraphicsPipeline(m_device->getDevice(), m_pipelineCache, shaderStages_mesh, vertexInputState, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_device->getRenderPass());
+        pipelines.solid = renderer::createGraphicsPipeline(m_device->getDevice(), m_device->getPipelineCache(), shaderStages_mesh, vertexInputState, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_device->getRenderPass());
 
         // Skybox initPipelines
         //skybox.initPipelines(m_renderPass);
@@ -835,7 +848,7 @@ private:
         if (wireframe) {
             rasterizer.polygonMode = VK_POLYGON_MODE_LINE;
             rasterizer.lineWidth = 1.0f;
-            pipelines.wireframe= renderer::createGraphicsPipeline(m_device->getDevice(), m_pipelineCache, shaderStages_mesh, vertexInputState, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_device->getRenderPass());
+            pipelines.wireframe = renderer::createGraphicsPipeline(m_device->getDevice(), m_device->getPipelineCache(), shaderStages_mesh, vertexInputState, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_device->getRenderPass());
         }
     }
 
@@ -843,7 +856,6 @@ private:
     {
         VkCommandBufferBeginInfo beginInfo{};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        //beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         beginInfo.pInheritanceInfo = nullptr;
 
         VkRenderPassBeginInfo renderPassInfo{};
@@ -853,7 +865,7 @@ private:
         renderPassInfo.renderArea.extent = m_device->getSwapChainExtent();
 
         std::array<VkClearValue, 2> clearValues{};
-        clearValues[0].color = { 0.0f, 0.0f, 0.0f, 1.0f };
+        clearValues[0].color = { 1.0f, 0.0f, 0.0f, 1.0f };
         clearValues[1].depthStencil = { 1.0f, 0 };
 
         renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
@@ -864,20 +876,35 @@ private:
             renderPassInfo.framebuffer = m_device->getFramebuffers()[i];
             VkDeviceSize offsets[1] = { 0 };
 
-            vkResetCommandBuffer(m_device->m_commandBuffers[i], 0);
-            if (vkBeginCommandBuffer(m_device->m_commandBuffers[i], &beginInfo) != VK_SUCCESS) {
+            VkCommandBuffer currentCB = m_device->m_commandBuffers[i];
+
+            //vkResetCommandBuffer(m_device->m_commandBuffers[i], 0);
+            if (vkBeginCommandBuffer(currentCB, &beginInfo) != VK_SUCCESS) {
                 throw std::runtime_error("failed to begin recording command buffer!");
             }
-            vkCmdBeginRenderPass(m_device->m_commandBuffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+            vkCmdBeginRenderPass(currentCB, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+            VkViewport viewport{};
+            viewport.width = (float)WIDTH;
+            viewport.height = -(float)HEIGHT;
+            viewport.minDepth = 0.0f;
+            viewport.maxDepth = 1.0f;
+            viewport.x = 0;
+            viewport.y = viewport.height;
+            vkCmdSetViewport(currentCB, 0, 1, &viewport);
+            
+            VkRect2D scissor{};
+            scissor.extent = { WIDTH, HEIGHT };
+            vkCmdSetScissor(currentCB, 0, 1, &scissor);
 
             // Skybox
             //skybox.render(m_device->m_commandBuffers[i]);
 
             // Model
-            vkCmdBindPipeline(m_device->m_commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, wireframe ? pipelines.wireframe : pipelines.solid);
-            vkCmdBindVertexBuffers(m_device->m_commandBuffers[i], 0, 1, &meshModel.vertices.buffer, offsets);
+            vkCmdBindPipeline(currentCB, VK_PIPELINE_BIND_POINT_GRAPHICS, wireframe ? pipelines.wireframe : pipelines.solid);
+            vkCmdBindVertexBuffers(currentCB, 0, 1, &meshModel.vertices.buffer, offsets);
             if (meshModel.indices.buffer != VK_NULL_HANDLE) {
-                vkCmdBindIndexBuffer(m_device->m_commandBuffers[i], meshModel.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
+                vkCmdBindIndexBuffer(currentCB, meshModel.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
             }
 
             // Opaque primitives first
@@ -886,10 +913,10 @@ private:
             }
 
             // User interface
-            gui.draw(m_device->m_commandBuffers[i]);
+            //gui.draw(currentCB);
 
-            vkCmdEndRenderPass(m_device->m_commandBuffers[i]);
-            vkEndCommandBuffer(m_device->m_commandBuffers[i]);
+            vkCmdEndRenderPass(currentCB);
+            vkEndCommandBuffer(currentCB);
         }
     }
 
@@ -900,7 +927,7 @@ private:
                 if (primitive->material.alphaMode == alphaMode) {
 
                     const std::vector<VkDescriptorSet> descriptorsets = {
-                        descriptorSet.scene,
+                        descriptorSets[cbIndex].scene,
                         primitive->material.descriptorSet,
                         node->mesh->uniformBuffer.descriptorSet,
                     };
@@ -983,11 +1010,11 @@ private:
        frameCounter = 0;
        lastTimestamp = tEnd;
 
-       updateGUI();
+       //updateGUI();
     }
 
     void drawFrame() {
-        vkWaitForFences(m_device->getDevice(), 1, &m_device->m_cmdBufExecutedFences[m_device->getCurrentFrame()], VK_TRUE, UINT64_MAX);
+        vkWaitForFences(m_device->getDevice(), 1, &m_device->waitFences[m_device->getCurrentFrame()], VK_TRUE, UINT64_MAX);
 
         uint32_t imageIndex;
         VkResult result = vkAcquireNextImageKHR(m_device->getDevice(), m_device->getSwapChain(), UINT64_MAX, m_device->m_imageAvailableSemaphores[m_device->getCurrentFrame()], VK_NULL_HANDLE, &imageIndex);
@@ -1000,16 +1027,10 @@ private:
             throw std::runtime_error("failed to acquire swap chain image!");
         }
 
-        updateUniformBuffer();
-        //skybox.updateUniformBuffer();
-
-        // Update Animation
-        meshModel.updateAnimation(animationIndex, frameTimer);
-
         if (m_device->m_imagesInFlight[imageIndex] != VK_NULL_HANDLE) {
             vkWaitForFences(m_device->getDevice(), 1, &m_device->m_imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX);
         }
-        m_device->m_imagesInFlight[imageIndex] = m_device->m_cmdBufExecutedFences[m_device->getCurrentFrame()];
+        m_device->m_imagesInFlight[imageIndex] = m_device->waitFences[m_device->getCurrentFrame()];
         
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1019,7 +1040,6 @@ private:
         submitInfo.waitSemaphoreCount = 1;
         submitInfo.pWaitSemaphores = waitSemaphores;
         submitInfo.pWaitDstStageMask = waitStages;
-
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &m_device->m_commandBuffers[imageIndex];
 
@@ -1027,9 +1047,17 @@ private:
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
 
-        vkResetFences(m_device->getDevice(), 1, &m_device->m_cmdBufExecutedFences[m_device->getCurrentFrame()]);
+        vkResetFences(m_device->getDevice(), 1, &m_device->waitFences[m_device->getCurrentFrame()]);
 
-        m_device->submitCommandBuffer(m_device->getGraphicsQueue(), &submitInfo, m_device->m_cmdBufExecutedFences[m_device->getCurrentFrame()]);
+        // Update Animation
+        meshModel.updateAnimation(animationIndex, frameTimer);
+        updateUniformBuffer();
+        UniformBufferSet currentUB = uniformBuffers[imageIndex];
+        memcpy(currentUB.scene.mapped, &shaderValuesScene, sizeof(shaderValuesScene));
+        memcpy(currentUB.scene.mapped, &shaderValuesParams, sizeof(shaderValuesParams));
+        //skybox.updateUniformBuffer();
+
+        m_device->submitCommandBuffer(m_device->getGraphicsQueue(), &submitInfo, m_device->waitFences[m_device->getCurrentFrame()]);
 
         VkPresentInfoKHR presentInfo{};
         presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -1054,20 +1082,23 @@ private:
     }
 
     void destroy() {
-        gui.freeResources();
-        vkFreeDescriptorSets(m_device->getDevice(), m_device->getDescriptorPool(), 1, &descriptorSet.scene);
+        //gui.freeResources();
+        meshModel.destroy();
+        emptyTexture.destroy(m_device->getDevice());
         vkDestroyDescriptorSetLayout(m_device->getDevice(), descriptorSetLayouts.scene, nullptr);
         vkDestroyDescriptorSetLayout(m_device->getDevice(), descriptorSetLayouts.materials, nullptr);
         vkDestroyDescriptorSetLayout(m_device->getDevice(), descriptorSetLayouts.node, nullptr);
-        vkDestroyDescriptorSetLayout(m_device->getDevice(), descriptorSetLayouts.uniforms, nullptr);
+        //vkDestroyDescriptorSetLayout(m_device->getDevice(), descriptorSetLayouts.uniforms, nullptr);
         //vkDestroyDescriptorSetLayout(m_device->getDevice(), descriptorSetLayouts.compute, nullptr);
-        vkDestroyBuffer(m_device->getDevice(), ubo.scene.buffer, nullptr);
-        vkDestroyBuffer(m_device->getDevice(), ubo.params.buffer, nullptr);
-        for (auto framebuffer : m_device->getFramebuffers()) {
-            vkDestroyFramebuffer(m_device->getDevice(), framebuffer, nullptr);
+        
+        for (auto ubo : uniformBuffers) {
+            vkDestroyBuffer(m_device->getDevice(), ubo.scene.buffer, nullptr);
+            vkDestroyBuffer(m_device->getDevice(), ubo.params.buffer, nullptr);
         }
+        vkDestroySampler(m_device->getDevice(), m_defaultSampler, nullptr);
+        vkDestroyPipeline(m_device->getDevice(), pipelines.solid, nullptr);
+        vkDestroyPipeline(m_device->getDevice(), pipelines.wireframe, nullptr);
         vkDestroyPipelineLayout(m_device->getDevice(), m_pipelineLayout, nullptr);
-        vkDestroyRenderPass(m_device->getDevice(), m_device->getRenderPass(), nullptr);
     }
 
     void destroyBuffer(const VkDevice& device, Buffer buffer) const
@@ -1081,30 +1112,41 @@ private:
         buffer = {};
     }
 
-    void updateGUI()
-    {
-        ImGuiIO& io = ImGui::GetIO();
-
-        io.DisplaySize = ImVec2((float)WIDTH, (float)HEIGHT);
-        io.DeltaTime = frameTimer;
-        ImGui::NewFrame();
-
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0);
-        ImGui::SetNextWindowPos(ImVec2(10, 10));
-        ImGui::SetNextWindowSize(ImVec2(150, 150), 4);
-        ImGui::Begin("Vulkan Example", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
-        ImGui::TextUnformatted("Titan Infinite");
-        //ImGui::TextUnformatted(m_device->getPhysicalDevice().deviceName);
-        ImGui::Text("%.2f ms/frame (%.1d fps)", (1000.0f / lastFPS), lastFPS);
-        ImGui::End();
-        ImGui::PopStyleVar();
-        ImGui::Render();
-
-        if (gui.update() || gui.updated) {
-            buildCommandBuffers();
-            gui.updated = false;
-        }
-    }
+    //void updateGUI()
+    //{
+    //    gui.beginUpdate();
+    //    ImGuiIO& io = ImGui::GetIO();
+    //    //io.DisplaySize = ImVec2((float)WIDTH, (float)HEIGHT);
+    //    //io.DeltaTime = frameTimer;
+    //    //io.MousePos = ImVec2(m_window->getCurCursorPos().first, m_window->getCurCursorPos().second);
+    //    //io.MouseDown[0] = glfwGetMouseButton(m_window->getNativeWindow(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+    //    //io.MouseDown[1] = glfwGetMouseButton(m_window->getNativeWindow(), GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+    //    //ImGui::NewFrame();
+    //
+    //    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0);
+    //    ImGui::SetNextWindowPos(ImVec2(10, 10));
+    //    ImGui::SetNextWindowSize(ImVec2(200, 200), 4);
+    //    ImGui::SetWindowFocus();
+    //    ImGui::Begin("Vulkan Example", nullptr);
+    //    ImGui::TextUnformatted("Titan Infinite");
+    //    //ImGui::TextUnformatted(m_device->getPhysicalDevice().deviceName);
+    //    ImGui::Text("%.2f ms/frame (%.1d fps)", (1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate));
+    //    ImGui::End();
+    //    ImGui::PopStyleVar();
+    //
+    //    ImGui::Render();
+    //    //if (gui.update() || gui.updated) {
+    //    //    buildCommandBuffers();
+    //    //    gui.updated = false;
+    //    //}
+    //
+    //    // Update and Render additional Platform Windows
+    //    if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+    //    {
+    //        ImGui::UpdatePlatformWindows();
+    //        ImGui::RenderPlatformWindowsDefault();
+    //    }
+    //}
 };
 
 int main()

@@ -40,8 +40,8 @@ struct InputAssemblyState {
 };
 
 struct ViewportState {
-    uint32_t topX;
-    uint32_t topY;
+    uint32_t x;
+    uint32_t y;
     uint32_t width;
     uint32_t height;
 };

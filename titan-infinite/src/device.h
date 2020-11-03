@@ -23,7 +23,6 @@ const std::vector<const char*> deviceExtensions = {
 
 const uint32_t WIDTH = 1280;
 const uint32_t HEIGHT = 720;
-const int MAX_FRAMES_IN_FLIGHT = 2;
 
 struct SwapChainSupportDetails {
     VkSurfaceCapabilitiesKHR capabilities;
@@ -51,7 +50,7 @@ struct Device {
     size_t getCurrentFrame() { return m_currentFrame; }
 
     std::vector<VkFence>       m_imagesInFlight;
-    std::vector<VkFence>       m_cmdBufExecutedFences;
+    std::vector<VkFence>       waitFences;
     std::vector<VkSemaphore>   m_imageAvailableSemaphores;
     std::vector<VkSemaphore>   m_renderFinishedSemaphores;
 
@@ -82,12 +81,15 @@ struct Device {
 
     VkQueue m_graphicsQueue;
     VkQueue m_presentQueue;
+    VkPipelineCache m_pipelineCache;
+    const uint32_t renderAhead = 2;
 
     VkDebugUtilsMessengerEXT debugMessenger;
     VkPhysicalDeviceMemoryProperties m_memoryProperties;
 
     VkDevice getDevice() const { return m_device; }
     VkPhysicalDevice getPhysicalDevice() const { return m_physicalDevice; }
+    VkInstance getInstance() const { return m_instance; }
     VkSurfaceKHR getSurface() const { return m_surface; }
     VkQueue getGraphicsQueue() const { return m_graphicsQueue; }
     VkQueue getPresentQueue() const { return m_presentQueue; }
@@ -95,7 +97,7 @@ struct Device {
     VkRenderPass getRenderPass() { return m_renderPass; }
     const Depthbuffer& getDepthbuffer() const { return m_depthbuffer; }
     const std::vector<VkFramebuffer>& getFramebuffers() const { return m_framebuffers; }
-
+    VkPipelineCache getPipelineCache() const { return m_pipelineCache; }
     void create(Window* window);
     void destroy();
 
