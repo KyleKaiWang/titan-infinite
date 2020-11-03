@@ -200,14 +200,14 @@ private:
                 VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
             );
-            memory::map(m_device->getDevice(), uniformBuffer.scene.memory, 0, VK_WHOLE_SIZE, &uniformBuffer.scene.mapped);
+            memory::map(m_device->getDevice(), uniformBuffer.scene.memory, 0, uniformBuffer.scene.bufferSize, &uniformBuffer.scene.mapped);
             uniformBuffer.params = buffer::createBuffer(
                 m_device,
                 sizeof(shaderValuesParams),
                 VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
             );
-            memory::map(m_device->getDevice(), uniformBuffer.params.memory, 0, VK_WHOLE_SIZE, &uniformBuffer.params.mapped);
+            memory::map(m_device->getDevice(), uniformBuffer.params.memory, 0, uniformBuffer.params.bufferSize, &uniformBuffer.params.mapped);
         }
         updateUniformBuffer();
     }
@@ -476,7 +476,7 @@ private:
         renderPassInfo.renderArea.extent = m_device->getSwapChainExtent();
 
         std::array<VkClearValue, 2> clearValues{};
-        clearValues[0].color = { 1.0f, 0.0f, 0.0f, 1.0f };
+        clearValues[0].color = { 0.2f, 0.2f, 0.2f, 1.0f };
         clearValues[1].depthStencil = { 1.0f, 0 };
 
         renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
@@ -497,11 +497,12 @@ private:
 
             VkViewport viewport{};
             viewport.width = (float)WIDTH;
-            viewport.height = -(float)HEIGHT;
+            viewport.height = (float)HEIGHT;
             viewport.minDepth = 0.0f;
             viewport.maxDepth = 1.0f;
             viewport.x = 0;
-            viewport.y = viewport.height;
+            viewport.y = 0;
+            //viewport.y = viewport.height;
             vkCmdSetViewport(currentCB, 0, 1, &viewport);
             
             VkRect2D scissor{};
@@ -616,6 +617,7 @@ private:
 
     void drawFrame() {
         vkWaitForFences(m_device->getDevice(), 1, &m_device->waitFences[m_device->getCurrentFrame()], VK_TRUE, UINT64_MAX);
+        vkResetFences(m_device->getDevice(), 1, &m_device->waitFences[m_device->getCurrentFrame()]);
 
         uint32_t imageIndex;
         VkResult result = vkAcquireNextImageKHR(m_device->getDevice(), m_device->getSwapChain(), UINT64_MAX, m_device->m_imageAvailableSemaphores[m_device->getCurrentFrame()], VK_NULL_HANDLE, &imageIndex);
@@ -648,14 +650,10 @@ private:
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
 
-        vkResetFences(m_device->getDevice(), 1, &m_device->waitFences[m_device->getCurrentFrame()]);
-
-        // Update Animation
-        meshModel.updateAnimation(animationIndex, frameTimer);
         updateUniformBuffer();
         UniformBufferSet currentUB = uniformBuffers[imageIndex];
         memcpy(currentUB.scene.mapped, &shaderValuesScene, sizeof(shaderValuesScene));
-        memcpy(currentUB.scene.mapped, &shaderValuesParams, sizeof(shaderValuesParams));
+        memcpy(currentUB.params.mapped, &shaderValuesParams, sizeof(shaderValuesParams));
         //skybox.updateUniformBuffer();
 
         m_device->submitCommandBuffer(m_device->getGraphicsQueue(), &submitInfo, m_device->waitFences[m_device->getCurrentFrame()]);
@@ -679,7 +677,11 @@ private:
         else if (result != VK_SUCCESS) {
             throw std::runtime_error("failed to present swap chain image!");
         }
-        m_device->m_currentFrame = (m_device->getCurrentFrame() + 1) % 2;
+        m_device->m_currentFrame = (m_device->m_currentFrame + 1) % 2;
+        
+        // Update Animation
+        meshModel.updateAnimation(animationIndex, frameTimer);
+        updateUniformBuffer();
     }
 
     void destroy() {
