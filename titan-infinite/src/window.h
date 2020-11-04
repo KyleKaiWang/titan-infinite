@@ -90,6 +90,12 @@ struct Window {
             case InputMode::RotatingCamera:
                 self->m_camera->yaw += OrbitSpeed * float(dx);
                 self->m_camera->pitch += OrbitSpeed * float(dy);
+
+                self->m_camera->rotation.x += dy * self->m_camera->rotationSpeed;
+                self->m_camera->rotation.y -= dx * self->m_camera->rotationSpeed;
+                self->m_camera->rotation += glm::vec3(dy * self->m_camera->rotationSpeed, -dx * self->m_camera->rotationSpeed, 0.0f);
+                self->m_camera->updateViewMatrix();
+
                 break;
             }
 
