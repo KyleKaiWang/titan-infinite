@@ -29,11 +29,11 @@
 #include <glm/gtx/euler_angles.hpp>
 
 #include "vkHelpers.h"
+#include "renderer.h"
 #include "device.h"
 #include "camera.h"
 #include "memory.h"
 #include "buffer.h"
-#include "renderer.h"
 #include "texture.h"
 #include "model.h"
 #include "skybox.h"

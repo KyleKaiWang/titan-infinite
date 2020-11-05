@@ -61,7 +61,7 @@ namespace texture {
         memory::unmap(device->getDevice(), stage_buffer_memory);
 
         // Image
-        texObj.image = renderer::createImage(
+        texObj.image = device->createImage(
             device->getDevice(),
             0,
             VK_IMAGE_TYPE_2D,
@@ -165,7 +165,7 @@ namespace texture {
 
         generateMipmaps(device, texObj, format);
 
-        texObj.view = renderer::createImageView(device->getDevice(),
+        texObj.view = device->createImageView(device->getDevice(),
             texObj.image,
             VK_IMAGE_VIEW_TYPE_2D,
             format,
@@ -258,7 +258,7 @@ namespace texture {
         memory::unmap(device->getDevice(), stage_buffer_memory);
 
         // Image
-        texObj.image = renderer::createImage(
+        texObj.image = device->createImage(
             device->getDevice(),
             VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
             VK_IMAGE_TYPE_2D,
@@ -357,7 +357,7 @@ namespace texture {
         vkFreeMemory(device->getDevice(), stage_buffer_memory, NULL);
         vkDestroyBuffer(device->getDevice(), stage_buffer, NULL);
 
-        texObj.view = renderer::createImageView(device->getDevice(),
+        texObj.view = device->createImageView(device->getDevice(),
             texObj.image,
             VK_IMAGE_VIEW_TYPE_CUBE,
             format,
@@ -465,7 +465,7 @@ namespace texture {
         copy_region.imageExtent.height = texObj.height;
         copy_region.imageExtent.depth = 1;
 
-        texObj.image = renderer::createImage(
+        texObj.image = device->createImage(
             device->getDevice(),
             0,
             VK_IMAGE_TYPE_2D,
@@ -531,7 +531,7 @@ namespace texture {
         vkDestroyBuffer(device->getDevice(), stagingBuffer, nullptr);
 
         // view
-        texObj.view = renderer::createImageView(device->getDevice(),
+        texObj.view = device->createImageView(device->getDevice(),
             texObj.image,
             VK_IMAGE_VIEW_TYPE_2D,
             format,

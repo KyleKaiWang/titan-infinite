@@ -10,10 +10,10 @@
 
 struct Camera
 {
-    float pitch = 0.0f;
-    float yaw = 0.0f;
-    float distance = 5.0;
-    float fov = 45.0;
+	float pitch = 0.0f;
+	float yaw = 0.0f;
+	float distance = 5.0;
+	float fov = 45.0;
 	float znear, zfar;
 
 	enum CameraType { lookat, firstperson };
@@ -22,8 +22,13 @@ struct Camera
 	glm::vec3 rotation = glm::vec3();
 	glm::vec3 position = glm::vec3();
 
+	glm::vec3 worldUp = { 0.0f, 1.0f, 0.0f };
+	glm::vec3 up = { 0.0f, 1.0f, 0.0f };
+	glm::vec3 front = { 0.0f, 0.0f, 1.0f };
+	glm::vec3 right = { 1.0f, 0.0f, 0.0f };
+
 	float rotationSpeed = 1.0f;
-	float movementSpeed = 1.0f;
+	float movementSpeed = 100.0f;
 
 	bool updated = false;
 
@@ -79,6 +84,12 @@ struct Camera
 		updateViewMatrix();
 	};
 
+	void setFront(glm::vec3& _front) {
+		front = _front;
+		right = glm::normalize(glm::cross(front, worldUp));
+		up = glm::normalize(glm::cross(right, front));
+	}
+
 	void rotate(glm::vec3 delta)
 	{
 		this->rotation += delta;
@@ -100,26 +111,26 @@ struct Camera
 	void update(float deltaTime)
 	{
 		updated = false;
-		if (type == CameraType::firstperson)
+		if (type == CameraType::lookat)
 		{
 			if (moving())
 			{
-				glm::vec3 camFront;
-				camFront.x = -cos(glm::radians(rotation.x)) * sin(glm::radians(rotation.y));
-				camFront.y = sin(glm::radians(rotation.x));
-				camFront.z = cos(glm::radians(rotation.x)) * cos(glm::radians(rotation.y));
-				camFront = glm::normalize(camFront);
+				glm::vec3 front;
+				front.x = -cos(glm::radians(rotation.x)) * sin(glm::radians(rotation.y));
+				front.y =  sin(glm::radians(rotation.x));
+				front.z =  cos(glm::radians(rotation.x)) * cos(glm::radians(rotation.y));
+				setFront(glm::normalize(front));
 
 				float moveSpeed = deltaTime * movementSpeed;
 
 				if (keys.up)
-					position += camFront * moveSpeed;
+					position += front * moveSpeed;
 				if (keys.down)
-					position -= camFront * moveSpeed;
+					position -= front * moveSpeed;
 				if (keys.left)
-					position -= glm::normalize(glm::cross(camFront, glm::vec3(0.0f, 1.0f, 0.0f))) * moveSpeed;
+					position -= right * moveSpeed;
 				if (keys.right)
-					position += glm::normalize(glm::cross(camFront, glm::vec3(0.0f, 1.0f, 0.0f))) * moveSpeed;
+					position += right * moveSpeed;
 
 				updateViewMatrix();
 			}

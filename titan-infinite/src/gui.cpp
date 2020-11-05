@@ -21,19 +21,19 @@ Gui::Gui()
 
 Gui::~Gui() 
 {
-	auto err = vkDeviceWaitIdle(device->getDevice());
+	auto err = vkDeviceWaitIdle(m_device->getDevice());
 	check_vk_result(err);
 	ImGui_ImplVulkan_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
 	ImGui::DestroyContext();
 
-	ImGui_ImplVulkanH_DestroyWindow(device->getInstance(), device->getDevice(), &g_MainWindowData, nullptr);
+	ImGui_ImplVulkanH_DestroyWindow(m_device->getInstance(), m_device->getDevice(), &g_MainWindowData, nullptr);
 }
 
 /** Prepare all vulkan resources required to render the UI overlay */
 void Gui::initResources(Device* device)
 {
-	this->device = device;
+	this->m_device = device;
 	this->queue = device->getGraphicsQueue();
 	auto glfwWindow = device->getWindow()->getNativeWindow();
 
@@ -72,7 +72,7 @@ void Gui::initResources(Device* device)
 	//VkDeviceSize uploadSize = texWidth * texHeight * 4 * sizeof(char);
 	//
 	//// Create target image for copy
-	//fontImage = renderer::createImage(
+	//fontImage = m_device->createImage(
 	//	device->getDevice(),
 	//	0,
 	//	VK_IMAGE_TYPE_2D,
@@ -103,7 +103,7 @@ void Gui::initResources(Device* device)
 	//	throw std::runtime_error("Failed to bind image memory");
 	//}
 	//
-	//fontView = renderer::createImageView(
+	//fontView = m_device->createImageView(
 	//	device->getDevice(), 
 	//	fontImage, 
 	//	VK_IMAGE_VIEW_TYPE_2D, 
@@ -196,10 +196,10 @@ void Gui::initResources(Device* device)
 	//std::vector<DescriptorSetLayoutBinding> setLayoutBindings = {
 	//	{ 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr }
 	//};
-	//descriptorSetLayout = renderer::createDescriptorSetLayout(device->getDevice(), { setLayoutBindings });
+	//descriptorSetLayout = m_device->createDescriptorSetLayout(device->getDevice(), { setLayoutBindings });
 	//
 	//// Descriptor set
-	//descriptorSet = renderer::createDescriptorSet(device->getDevice(), descriptorPool, descriptorSetLayout);
+	//descriptorSet = m_device->createDescriptorSet(device->getDevice(), descriptorPool, descriptorSetLayout);
 	//
 	//
 	//VkDescriptorImageInfo fontDescriptor =
@@ -299,7 +299,7 @@ void Gui::initPipeline()
 	pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 	pushConstantRange.size = sizeof(PushConstBlock);
 	pushConstantRange.offset = 0;
-	pipelineLayout = renderer::createPipelineLayout(device->getDevice(), { descriptorSetLayout }, { pushConstantRange });
+	pipelineLayout = m_device->createPipelineLayout(m_device->getDevice(), { descriptorSetLayout }, { pushConstantRange });
 
 	InputAssemblyState inputAssembly{};
 	inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
@@ -308,8 +308,8 @@ void Gui::initPipeline()
 	ViewportState viewport{};
 	viewport.x = 0;
 	viewport.y = 0;
-	viewport.width = device->getSwapChainExtent().width;
-	viewport.height = device->getSwapChainExtent().height;
+	viewport.width = m_device->getSwapChainExtent().width;
+	viewport.height = m_device->getSwapChainExtent().height;
 
 	RasterizationState rasterizer{};
 	rasterizer.depthClampEnable = VK_FALSE;
@@ -374,15 +374,15 @@ void Gui::initPipeline()
 			{2, 0, VK_FORMAT_R8G8B8A8_UNORM, offsetof(ImDrawVert, col) }	// Location 0: Color
 	   }
 	};
-	std::vector<ShaderStage> shaderStages = renderer::createShader(
-		device->getDevice(), 
+	std::vector<ShaderStage> shaderStages = m_device->createShader(
+		m_device->getDevice(),
 		"data/shaders/ui.vert.spv", 
 		"data/shaders/ui.frag.spv"
 	);
 
-	pipeline = renderer::createGraphicsPipeline(
-		device->getDevice(), 
-		device->getPipelineCache(),
+	pipeline = m_device->createGraphicsPipeline(
+		m_device->getDevice(),
+		m_device->getPipelineCache(),
 		shaderStages,
 		vertexInputState, 
 		inputAssembly, 
@@ -426,7 +426,7 @@ bool Gui::update()
 	if ((vertexBuffer.buffer == VK_NULL_HANDLE) || (vertexCount != imDrawData->TotalVtxCount)) {
 		vertexBuffer.unmap();
 		vertexBuffer.destroy();
-		vertexBuffer = buffer::createBuffer(device, vertexBufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+		vertexBuffer = buffer::createBuffer(m_device, vertexBufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
 		vertexCount = imDrawData->TotalVtxCount;
 		vertexBuffer.unmap();
 		vertexBuffer.map();
@@ -438,7 +438,7 @@ bool Gui::update()
 	if ((indexBuffer.buffer == VK_NULL_HANDLE) || (indexCount < imDrawData->TotalIdxCount)) {
 		indexBuffer.unmap();
 		indexBuffer.destroy();
-		indexBuffer = buffer::createBuffer(device, indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+		indexBuffer = buffer::createBuffer(m_device, indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
 		indexCount = imDrawData->TotalIdxCount;
 		indexBuffer.map();
 		updateCmdBuffers = true;
@@ -516,14 +516,14 @@ void Gui::freeResources()
 	//ImGui::DestroyContext();
 	vertexBuffer.destroy();
 	indexBuffer.destroy();
-	vkDestroyImageView(device->getDevice(), fontView, nullptr);
-	vkDestroyImage(device->getDevice(), fontImage, nullptr);
-	vkFreeMemory(device->getDevice(), fontMemory, nullptr);
-	vkDestroySampler(device->getDevice(), sampler, nullptr);
-	vkDestroyDescriptorSetLayout(device->getDevice(), descriptorSetLayout, nullptr);
-	vkDestroyDescriptorPool(device->getDevice(), descriptorPool, nullptr);
-	vkDestroyPipelineLayout(device->getDevice(), pipelineLayout, nullptr);
-	vkDestroyPipeline(device->getDevice(), pipeline, nullptr);
+	vkDestroyImageView(m_device->getDevice(), fontView, nullptr);
+	vkDestroyImage(m_device->getDevice(), fontImage, nullptr);
+	vkFreeMemory(m_device->getDevice(), fontMemory, nullptr);
+	vkDestroySampler(m_device->getDevice(), sampler, nullptr);
+	vkDestroyDescriptorSetLayout(m_device->getDevice(), descriptorSetLayout, nullptr);
+	vkDestroyDescriptorPool(m_device->getDevice(), descriptorPool, nullptr);
+	vkDestroyPipelineLayout(m_device->getDevice(), pipelineLayout, nullptr);
+	vkDestroyPipeline(m_device->getDevice(), pipeline, nullptr);
 }
 
 bool Gui::header(const char* caption)

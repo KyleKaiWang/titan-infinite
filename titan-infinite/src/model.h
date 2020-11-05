@@ -255,6 +255,12 @@ namespace vkglTF {
 			glm::vec3 max = glm::vec3(-FLT_MAX);
 		} dimensions;
 
+		struct Transform {
+			glm::vec3 positionPerAxis;
+			glm::vec3 scalePerAxis;
+			glm::vec3 rotateAngelPerAxis;
+		}transform;
+
 		bool buffersBound = false;
 		std::string path;
 

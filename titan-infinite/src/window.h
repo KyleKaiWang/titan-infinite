@@ -86,16 +86,15 @@ struct Window {
             case InputMode::RotatingScene:
                 self->m_sceneSettings.yaw += OrbitSpeed * float(dx);
                 self->m_sceneSettings.pitch += OrbitSpeed * float(dy);
-                break;
-            case InputMode::RotatingCamera:
-                self->m_camera->yaw += OrbitSpeed * float(dx);
-                self->m_camera->pitch += OrbitSpeed * float(dy);
 
                 self->m_camera->rotation.x += dy * self->m_camera->rotationSpeed;
                 self->m_camera->rotation.y -= dx * self->m_camera->rotationSpeed;
                 self->m_camera->rotation += glm::vec3(dy * self->m_camera->rotationSpeed, -dx * self->m_camera->rotationSpeed, 0.0f);
                 self->m_camera->updateViewMatrix();
-
+                break;
+            case InputMode::RotatingCamera:
+                self->m_camera->yaw += OrbitSpeed * float(dx);
+                self->m_camera->pitch += OrbitSpeed * float(dy);
                 break;
             }
 
@@ -110,10 +109,10 @@ struct Window {
         if (action == GLFW_PRESS && self->m_mode == InputMode::None) {
             switch (button) {
             case GLFW_MOUSE_BUTTON_1:
-                self->m_mode = InputMode::RotatingCamera;
+                self->m_mode = InputMode::RotatingScene;
                 break;
             case GLFW_MOUSE_BUTTON_2:
-                self->m_mode = InputMode::RotatingScene;
+                self->m_mode = InputMode::RotatingCamera;
                 break;
             }
         }
@@ -141,5 +140,35 @@ struct Window {
 
     static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
         Window* self = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
+        if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+            glfwSetWindowShouldClose(window, true);
+
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+            self->m_camera->keys.up = true;
+        }
+        else {
+            self->m_camera->keys.up = false;
+        }
+
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+            self->m_camera->keys.down = true;
+        }
+        else {
+            self->m_camera->keys.down = false;
+        }
+
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+            self->m_camera->keys.left = true;
+        }
+        else {
+            self->m_camera->keys.left = false;
+        }
+
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+            self->m_camera->keys.right = true;
+        }
+        else {
+            self->m_camera->keys.right = false;
+        }
     }
 };

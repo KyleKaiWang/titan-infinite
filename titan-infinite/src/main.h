@@ -133,8 +133,8 @@ private:
     float animationTimer = 0.0f;
     bool animate = true;
 
-    void initResource() {
-
+    void initResource() 
+    {
         // Camera
         m_camera = new Camera();
         m_camera->distance = 1.0f;
@@ -142,7 +142,7 @@ private:
         m_camera->type = Camera::CameraType::lookat;
         m_camera->setPerspective(45.0f, (float)WIDTH / (float)HEIGHT, 0.1f, 1000.0f);
         m_camera->rotationSpeed = 0.25f;
-        m_camera->movementSpeed = 0.1f;
+        m_camera->movementSpeed = 1.0f;
         m_camera->setPosition({ 0.0f, 0.0f, m_camera->distance });
         m_camera->setRotation({ 0.0f, 0.0f, 0.0f });
 
@@ -228,11 +228,7 @@ private:
         shaderValuesScene.model[2][2] = scale;
         shaderValuesScene.model = glm::translate(shaderValuesScene.model, translate);
 
-        shaderValuesScene.camPos = glm::vec3(
-            -m_camera->position.z * sin(glm::radians(m_camera->rotation.y)) * cos(glm::radians(m_camera->rotation.x)),
-            -m_camera->position.z * sin(glm::radians(m_camera->rotation.x)),
-            m_camera->position.z * cos(glm::radians(m_camera->rotation.y)) * cos(glm::radians(m_camera->rotation.x))
-        );
+        shaderValuesScene.camPos = m_camera->position;
     }
 
     void initDescriptorPool()
@@ -274,7 +270,7 @@ private:
                 { 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
                 { 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
             };
-            descriptorSetLayouts.scene = renderer::createDescriptorSetLayout(m_device->getDevice(), { sceneLayoutBindings });
+            descriptorSetLayouts.scene = m_device->createDescriptorSetLayout(m_device->getDevice(), { sceneLayoutBindings });
         }
         // Material
         {
@@ -285,7 +281,7 @@ private:
                 { 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
                 { 4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
             };
-            descriptorSetLayouts.materials = renderer::createDescriptorSetLayout(m_device->getDevice(), { materialLayoutBindings });
+            descriptorSetLayouts.materials = m_device->createDescriptorSetLayout(m_device->getDevice(), { materialLayoutBindings });
         }
         {
             // Model node (matrices)
@@ -293,7 +289,7 @@ private:
                 std::vector<DescriptorSetLayoutBinding> nodeSetLayoutBindings = {
                     { 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr },
                 };
-                descriptorSetLayouts.node = renderer::createDescriptorSetLayout(m_device->getDevice(), { nodeSetLayoutBindings });
+                descriptorSetLayouts.node = m_device->createDescriptorSetLayout(m_device->getDevice(), { nodeSetLayoutBindings });
 
                 // Per-Node descriptor set
                 for (auto& node : meshModel.nodes) {
@@ -307,14 +303,14 @@ private:
         pushConstantRange.size = sizeof(PushConstBlockMaterial);
         pushConstantRange.offset = 0;
 
-        m_pipelineLayout = renderer::createPipelineLayout(m_device->getDevice(), { descriptorSetLayouts.scene, descriptorSetLayouts.materials, descriptorSetLayouts.node }, { pushConstantRange });
+        m_pipelineLayout = m_device->createPipelineLayout(m_device->getDevice(), { descriptorSetLayouts.scene, descriptorSetLayouts.materials, descriptorSetLayouts.node }, { pushConstantRange });
     }
 
     void initDescriptorSet()
     {   
         // Scene
         for (auto i = 0; i < descriptorSets.size(); i++) {
-            descriptorSets[i].scene = renderer::createDescriptorSet(m_device->getDevice(), m_device->getDescriptorPool(), descriptorSetLayouts.scene);
+            descriptorSets[i].scene = m_device->createDescriptorSet(m_device->getDevice(), m_device->getDescriptorPool(), descriptorSetLayouts.scene);
             std::array<VkWriteDescriptorSet, 2> writeDescriptorSets{};
 
             writeDescriptorSets[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -337,7 +333,7 @@ private:
         {
             // Per-Material descriptor sets
             for (auto& material : meshModel.materials) {
-                material.descriptorSet = renderer::createDescriptorSet(m_device->getDevice(), m_device->getDescriptorPool(), descriptorSetLayouts.materials);
+                material.descriptorSet = m_device->createDescriptorSet(m_device->getDevice(), m_device->getDescriptorPool(), descriptorSetLayouts.materials);
                 VkDescriptorImageInfo emptyDescriptorImageInfo{ m_defaultSampler, emptyTexture.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
 
                 std::vector<VkDescriptorImageInfo> imageDescriptors = {
@@ -449,14 +445,14 @@ private:
         dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());;
 
         // Solid rendering pipeline
-        std::vector<ShaderStage> shaderStages_mesh = renderer::createShader(m_device->getDevice(), "data/shaders/pbr.vert.spv", "data/shaders/pbr.frag.spv");
-        pipelines.solid = renderer::createGraphicsPipeline(m_device->getDevice(), m_device->getPipelineCache(), shaderStages_mesh, vertexInputState, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_device->getRenderPass());
+        std::vector<ShaderStage> shaderStages_mesh = m_device->createShader(m_device->getDevice(), "data/shaders/pbr.vert.spv", "data/shaders/pbr.frag.spv");
+        pipelines.solid = m_device->createGraphicsPipeline(m_device->getDevice(), m_device->getPipelineCache(), shaderStages_mesh, vertexInputState, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_device->getRenderPass());
 
         // Wire frame rendering pipeline
         if (wireframe) {
             rasterizer.polygonMode = VK_POLYGON_MODE_LINE;
             rasterizer.lineWidth = 1.0f;
-            pipelines.wireframe = renderer::createGraphicsPipeline(m_device->getDevice(), m_device->getPipelineCache(), shaderStages_mesh, vertexInputState, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_device->getRenderPass());
+            pipelines.wireframe = m_device->createGraphicsPipeline(m_device->getDevice(), m_device->getPipelineCache(), shaderStages_mesh, vertexInputState, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_device->getRenderPass());
         }
         
         for (auto shaderStage : shaderStages_mesh)
@@ -605,7 +601,7 @@ private:
         auto tEnd = std::chrono::high_resolution_clock::now();
         auto tDiff = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
         frameTimer = (float)tDiff / 1000.0f;
-    
+        m_camera->update(frameTimer);
        float fpsTimer = (float)(std::chrono::duration<double, std::milli>(tEnd - lastTimestamp).count());
        if (fpsTimer > 1000.0f)
        {

@@ -24,7 +24,7 @@ public:
 	Gui();
 	~Gui();
 
-	Device* device;
+	Device* m_device;
 	VkQueue queue;
 
 	VkSampleCountFlagBits rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
