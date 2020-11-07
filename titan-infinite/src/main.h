@@ -133,6 +133,8 @@ private:
     float animationTimer = 0.0f;
     bool animate = true;
 
+    Gui* gui;
+
     void initResource() 
     {
         // Camera
@@ -154,6 +156,10 @@ private:
         // Physical, Logical Device and Surface
         m_device = new Device();
         m_device->create(m_window);
+        
+        // Gui
+        gui = new Gui();
+        gui->init(m_device);
 
         uniformBuffers.resize(m_device->getSwapChainimages().size());
         descriptorSets.resize(m_device->getSwapChainimages().size());
@@ -589,7 +595,9 @@ private:
         while (!m_window->getWindowShouldClose()) {
             // Poll for user input.
             glfwPollEvents();
+            gui->beginUpdate();
             render();
+            gui->endUpdate();
         }
         vkDeviceWaitIdle(m_device->getDevice());
     }
@@ -687,7 +695,7 @@ private:
     }
 
     void destroy() {
-        //gui.freeResources();
+        gui->destroy();
         meshModel.destroy();
         emptyTexture.destroy(m_device->getDevice());
         vkDestroySampler(m_device->getDevice(), m_defaultSampler, nullptr);
@@ -703,6 +711,10 @@ private:
         vkDestroyPipeline(m_device->getDevice(), pipelines.solid, nullptr);
         vkDestroyPipeline(m_device->getDevice(), pipelines.wireframe, nullptr);
         vkDestroyPipelineLayout(m_device->getDevice(), m_pipelineLayout, nullptr);
+    }
+
+    void updateGUI() {
+        
     }
 };
 

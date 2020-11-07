@@ -58,6 +58,7 @@ struct Device {
     std::vector<VkCommandBuffer> m_commandBuffers;
     const VkCommandPool& getCommandPool() const { return m_commandPool; }
     const std::vector<VkCommandBuffer>& getCommandBuffers() { return m_commandBuffers; }
+    VkCommandBuffer getCurrentCommandBuffer() { return m_commandBuffers[m_currentFrame]; }
 
     VkDescriptorPool m_descriptorPool;
     std::vector<VkDescriptorSet> m_descriptorSets;
