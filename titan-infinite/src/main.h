@@ -683,7 +683,6 @@ private:
             }
             meshModel.updateAnimation(animationIndex, animationTimer);
         }
-        //meshModel.updateAnimation(animationIndex, frameTimer);
         updateUniformBuffer();
     }
 
