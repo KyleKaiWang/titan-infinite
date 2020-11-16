@@ -27,6 +27,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/euler_angles.hpp>
+#include <glm/gtx/quaternion.hpp>
+#include "transform.h"
 
 #include "vkHelpers.h"
 #include "renderer.h"
