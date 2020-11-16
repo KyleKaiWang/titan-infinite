@@ -26,15 +26,18 @@ Gui::~Gui()
 	ImGui_ImplVulkan_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
 	ImGui::DestroyContext();
-
-	ImGui_ImplVulkanH_DestroyWindow(m_device->getInstance(), m_device->getDevice(), &g_MainWindowData, nullptr);
 }
 
 /** Prepare all vulkan resources required to render the UI overlay */
 void Gui::init(Device* device)
 {
 	this->m_device = device;
-	auto glfwWindow = device->getWindow()->getNativeWindow();
+	GLFWwindow* glfwWindow = device->getWindow()->getNativeWindow();
+	auto width = device->getSwapChainExtent().width;
+	auto height = device->getSwapChainExtent().height;
+	auto queueFamily = vkHelper::findQueueFamilies(m_device->getPhysicalDevice(), m_device->getSurface());
+	
+	vkHelper::findQueueFamilies(m_device->getPhysicalDevice(), m_device->getSurface());
 
 	// Init ImGui
 	ImGui::CreateContext();
@@ -57,6 +60,8 @@ void Gui::init(Device* device)
 		style.WindowRounding = 0.0f;
 		style.Colors[ImGuiCol_WindowBg].w = 1.0f;
 	}
+	io.DisplaySize = ImVec2(width, height);
+	io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
 
 	// Setup Platform/Renderer bindings
 	ImGui_ImplGlfw_InitForVulkan(glfwWindow, true);
@@ -66,26 +71,8 @@ void Gui::init(Device* device)
 	init_info.Instance = device->getInstance();
 	init_info.PhysicalDevice = device->getPhysicalDevice();
 	init_info.Device = device->getDevice();
-
-	uint32_t queueFamily = (uint32_t)-1;
-	// Select graphics queue family
-	{
-		uint32_t count;
-		vkGetPhysicalDeviceQueueFamilyProperties(device->getPhysicalDevice(), &count, NULL);
-		VkQueueFamilyProperties* queues = (VkQueueFamilyProperties*)malloc(sizeof(VkQueueFamilyProperties) * count);
-		vkGetPhysicalDeviceQueueFamilyProperties(device->getPhysicalDevice(), &count, queues);
-		for (uint32_t i = 0; i < count; i++)
-			if (queues[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
-			{
-				queueFamily = i;
-				break;
-			}
-		free(queues);
-		IM_ASSERT(queueFamily != (uint32_t)-1);
-	}
-
-	init_info.QueueFamily = queueFamily;
-	init_info.Queue = device->getGraphicsQueue();
+	init_info.QueueFamily = queueFamily.graphicsFamily.value();
+	init_info.Queue = device->getPresentQueue();
 	init_info.PipelineCache = device->getPipelineCache();
 
 	// Create Descriptor Pool
@@ -119,47 +106,48 @@ void Gui::init(Device* device)
 	init_info.MinImageCount = g_MinImageCount;
 	init_info.ImageCount = device->getSwapChainimages().size();
 	init_info.CheckVkResultFn = vk_result;
+	{
+		VkAttachmentDescription attachment = {};
+		attachment.format = device->getSwapChainImageFormat();
+		attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+		attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+		attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		attachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-	VkAttachmentDescription attachment = {};
-	attachment.format = device->getSwapChainImageFormat();
-	attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-	attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-	attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	attachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		VkAttachmentReference color_attachment = {};
+		color_attachment.attachment = 0;
+		color_attachment.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-	VkAttachmentReference color_attachment = {};
-	color_attachment.attachment = 0;
-	color_attachment.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		VkSubpassDescription subpass = {};
+		subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+		subpass.colorAttachmentCount = 1;
+		subpass.pColorAttachments = &color_attachment;
 
-	VkSubpassDescription subpass = {};
-	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-	subpass.colorAttachmentCount = 1;
-	subpass.pColorAttachments = &color_attachment;
+		VkSubpassDependency dependency = {};
+		dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+		dependency.dstSubpass = 0;
+		dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		dependency.srcAccessMask = 0;  // or VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
-	VkSubpassDependency dependency = {};
-	dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-	dependency.dstSubpass = 0;
-	dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	dependency.srcAccessMask = 0;  // or VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-	dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-
-	VkRenderPassCreateInfo info = {};
-	info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-	info.attachmentCount = 1;
-	info.pAttachments = &attachment;
-	info.subpassCount = 1;
-	info.pSubpasses = &subpass;
-	info.dependencyCount = 1;
-	info.pDependencies = &dependency;
-	if (vkCreateRenderPass(device->getDevice(), &info, nullptr, &imGuiRenderPass) != VK_SUCCESS) {
-		throw std::runtime_error("Could not create Dear ImGui's render pass");
+		VkRenderPassCreateInfo info = {};
+		info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+		info.attachmentCount = 1;
+		info.pAttachments = &attachment;
+		info.subpassCount = 1;
+		info.pSubpasses = &subpass;
+		info.dependencyCount = 1;
+		info.pDependencies = &dependency;
+		if (vkCreateRenderPass(device->getDevice(), &info, nullptr, &imGuiRenderPass) != VK_SUCCESS) {
+			throw std::runtime_error("Could not create Dear ImGui's render pass");
+		}
+		ImGui_ImplVulkan_Init(&init_info, imGuiRenderPass);
 	}
-	ImGui_ImplVulkan_Init(&init_info, imGuiRenderPass);
-
+	//ImGui_ImplVulkan_Init(&init_info, m_device->getRenderPass());
 
 	// Upload Fonts
 	{
@@ -192,19 +180,29 @@ void Gui::init(Device* device)
 	}
 }
 
-void Gui::beginUpdate()
+void Gui::draw()
+{
+}
+
+void Gui::render()
 {
 	ImGui_ImplVulkan_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
-	if(showDemoWindow)
+	if (showDemoWindow)
 		ImGui::ShowDemoWindow(&showDemoWindow);
-}
-
-void Gui::endUpdate()
-{
+	ImGuiViewport* main_viewport = ImGui::GetMainViewport();
+	ImGui::SetNextWindowPos(ImVec2(main_viewport->GetWorkPos().x + 650, main_viewport->GetWorkPos().y + 20), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(550, 680), ImGuiCond_FirstUseEver);
+	ImGui::Begin("Hello, world!", nullptr, ImGuiWindowFlags_NoBringToFrontOnFocus);
+	ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+	ImGui::End();
+	
 	ImGui::Render();
-
+	ImDrawData* draw_data = ImGui::GetDrawData();
+	const bool main_is_minimized = (draw_data->DisplaySize.x <= 0.0f || draw_data->DisplaySize.y <= 0.0f);
+	ImGui_ImplVulkan_RenderDrawData(draw_data, m_device->getCurrentCommandBuffer());
+	
 	// Update and Render additional Platform Windows
 	ImGuiIO& io = ImGui::GetIO();
 	if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)

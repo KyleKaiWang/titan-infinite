@@ -30,11 +30,11 @@ public:
 	ImGui_ImplVulkanH_Window g_MainWindowData;
 	int g_MinImageCount = 2;
 	float scale = 1.0f;
-	bool showDemoWindow = true;
+	bool showDemoWindow = false;
 
 	void init(Device* device);
-	void beginUpdate();
-	void endUpdate();
+	void draw();
+	void render();
 	void resize(uint32_t width, uint32_t height);
 
 	void destroy();

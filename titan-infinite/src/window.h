@@ -21,6 +21,9 @@ struct Window {
     SceneSettings m_sceneSettings;
     InputMode m_mode = InputMode::None;
 
+    uint32_t m_screen_width;
+    uint32_t m_screen_height;
+
     double m_prevCursorX = 0.0;
     double m_prevCursorY = 0.0;
     double m_currCursorX = 0.0;
@@ -29,6 +32,8 @@ struct Window {
     bool m_framebufferResized = false;
 
     GLFWwindow* getNativeWindow() { return m_window; }
+    uint32_t getWidth() { return m_screen_width; }
+    uint32_t getHeight() { return m_screen_height; }
     bool getWindowShouldClose() { return glfwWindowShouldClose(m_window); }
     bool getFramebufferResized() { return m_framebufferResized; }
     void setFramebufferResized(bool resized) { m_framebufferResized = resized; }
@@ -51,6 +56,9 @@ struct Window {
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+
+        m_screen_width = width;
+        m_screen_height = height;
 
         m_window = glfwCreateWindow(width, height, "Vulkan Window", nullptr, nullptr);
         if (m_window == NULL) {

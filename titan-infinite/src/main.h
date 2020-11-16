@@ -24,6 +24,7 @@
 #include <vulkan/vulkan.hpp>
 #include "gui.h"
 #include "animation.h"
+#include "line_segment.h"
 
 class Application {
 public:
@@ -47,12 +48,14 @@ private:
 
     struct DescriptorSets {
         VkDescriptorSet scene;
+        VkDescriptorSet debug;
     };
 
     VkPipelineLayout m_pipelineLayout;
 
     // glTF
     vkglTF::VulkanglTFModel meshModel;
+    vkglTF::VulkanglTFModel cubeModel;
 
     struct Pipelines
     {
@@ -60,7 +63,7 @@ private:
         VkPipeline wireframe = VK_NULL_HANDLE;
     } pipelines;
 
-    bool wireframe = false;
+    bool wireframe = true;
 
     struct DescriptorSetLayouts
     {
@@ -72,6 +75,7 @@ private:
     struct UniformBufferSet {
         Buffer scene;
         Buffer params;
+        Buffer debug;
     };
     
     struct UBOMatrices {
@@ -79,7 +83,7 @@ private:
         glm::mat4 model;
         glm::mat4 view;
         glm::vec3 camPos;
-    }shaderValuesScene;
+    }shaderValuesScene, shaderValuesDebug;
 
     std::vector<DescriptorSets> descriptorSets;
     std::vector<UniformBufferSet> uniformBuffers;
@@ -92,6 +96,7 @@ private:
         float scaleIBLAmbient = 1.0f;
         float debugViewInputs = 0;
         float debugViewEquation = 0;
+        float enableDebugBones = 0.0f;
         glm::vec3 camPos = glm::vec3(10.0f, 10.0f, 10.0f);
     } shaderValuesParams;
 
@@ -115,6 +120,7 @@ private:
     } pushConstBlockMaterial;
     
     TextureObject emptyTexture;
+    TextureObject checkerboardTexture;
     VkSampler m_defaultSampler;
 
     struct SpecularFilterPushConstants
@@ -131,9 +137,18 @@ private:
 
     int32_t animationIndex = 0;
     float animationTimer = 0.0f;
-    bool animate = true;
-
+    bool animate = false;
     Gui* gui;
+
+    struct Transform
+    {
+        glm::mat4 model;
+        glm::vec3 positionPerAxis;
+        glm::vec3 scalePerAxis;
+        glm::vec3 rotateAngelPerAxis;
+    }transform;
+
+    std::vector<glm::mat4> bonesToDraw;
 
     void initResource() 
     {
@@ -161,6 +176,11 @@ private:
         gui = new Gui();
         gui->init(m_device);
 
+        // Bone debug
+        //transform.positionPerAxis = glm::vec3(0.3f, -0.055f, 0.30f);
+        //transform.rotateAngelPerAxis = glm::vec3(0.0f, glm::radians(00.0f), 0.0f);
+        //transform.scalePerAxis = glm::vec3(50.0f, 5.0f, 40.0f);
+
         uniformBuffers.resize(m_device->getSwapChainimages().size());
         descriptorSets.resize(m_device->getSwapChainimages().size());
 
@@ -174,7 +194,8 @@ private:
     }
 
     void loadAssets() {
-        meshModel.loadFromFile("data/models/glTF-Embedded/CesiumMan.gltf", m_device, m_device->getGraphicsQueue());
+        meshModel.loadFromFile("data/models/glTF-Embedded/SimpleSkin.gltf", m_device, m_device->getGraphicsQueue());
+        cubeModel.loadFromFile("data/models/glTF-Embedded/Box.gltf", m_device, m_device->getGraphicsQueue());
 
         m_defaultSampler = texture::createSampler(
             m_device->getDevice(),
@@ -195,6 +216,7 @@ private:
             VK_FALSE);
 
         emptyTexture = texture::loadTexture("data/textures/empty.jpg", VK_FORMAT_R8G8B8A8_UNORM, m_device, 4);
+        checkerboardTexture = texture::loadTexture("data/textures/checkerboard.png", VK_FORMAT_R8G8B8A8_UNORM, m_device, 4);
     }
 
     void initUniformBuffers() {
@@ -207,6 +229,13 @@ private:
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
             );
             memory::map(m_device->getDevice(), uniformBuffer.scene.memory, 0, uniformBuffer.scene.bufferSize, &uniformBuffer.scene.mapped);
+            uniformBuffer.debug = buffer::createBuffer(
+                m_device,
+                sizeof(shaderValuesDebug),
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+            );
+            memory::map(m_device->getDevice(), uniformBuffer.debug.memory, 0, uniformBuffer.debug.bufferSize, &uniformBuffer.debug.mapped);
             uniformBuffer.params = buffer::createBuffer(
                 m_device,
                 sizeof(shaderValuesParams),
@@ -224,6 +253,7 @@ private:
         shaderValuesScene.projection = m_camera->matrices.perspective;
         shaderValuesScene.view = m_camera->matrices.view;
 
+        // Mesh
         float scale = (1.0f / (std::max)(meshModel.aabb[0][0], (std::max)(meshModel.aabb[1][1], meshModel.aabb[2][2]))) * 0.5f;
         glm::vec3 translate = -glm::vec3(meshModel.aabb[3][0], meshModel.aabb[3][1], meshModel.aabb[3][2]);
         translate += -0.5f * glm::vec3(meshModel.aabb[0][0], meshModel.aabb[1][1], meshModel.aabb[2][2]);
@@ -234,7 +264,13 @@ private:
         shaderValuesScene.model[2][2] = scale;
         shaderValuesScene.model = glm::translate(shaderValuesScene.model, translate);
 
-        shaderValuesScene.camPos = m_camera->position;
+        shaderValuesScene.camPos = m_camera->position;     
+    }
+    void updateDebugUniformBuffer(glm::mat4 model) {
+        shaderValuesDebug.projection = m_camera->matrices.perspective;
+        shaderValuesDebug.view = m_camera->matrices.view;
+        shaderValuesDebug.camPos = m_camera->position;
+        shaderValuesDebug.model = glm::scale(model, glm::vec3(0.1));
     }
 
     void initDescriptorPool()
@@ -244,7 +280,7 @@ private:
         uint32_t meshCount = 0;
 
 
-        std::vector<vkglTF::VulkanglTFModel*> modellist = { &meshModel };
+        std::vector<vkglTF::VulkanglTFModel*> modellist = { &meshModel, &cubeModel };
         for (auto& model : modellist) {
             for (auto& material : model->materials) {
                 imageSamplerCount += 5;
@@ -274,7 +310,7 @@ private:
         {
             std::vector<DescriptorSetLayoutBinding> sceneLayoutBindings = {
                 { 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
-                { 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+                { 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
             };
             descriptorSetLayouts.scene = m_device->createDescriptorSetLayout(m_device->getDevice(), { sceneLayoutBindings });
         }
@@ -300,6 +336,10 @@ private:
                 // Per-Node descriptor set
                 for (auto& node : meshModel.nodes) {
                     meshModel.initNodeDescriptor(node, descriptorSetLayouts.node);
+                }
+
+                for (auto& node : cubeModel.nodes) {
+                    cubeModel.initNodeDescriptor(node, descriptorSetLayouts.node);
                 }
             }
         }
@@ -335,6 +375,27 @@ private:
 
             vkUpdateDescriptorSets(m_device->getDevice(), static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, NULL);
         }
+        // Debug Bone
+        for (auto i = 0; i < descriptorSets.size(); i++) {
+            descriptorSets[i].debug = m_device->createDescriptorSet(m_device->getDevice(), m_device->getDescriptorPool(), descriptorSetLayouts.scene);
+            std::array<VkWriteDescriptorSet, 2> writeDescriptorSets{};
+
+            writeDescriptorSets[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writeDescriptorSets[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            writeDescriptorSets[0].descriptorCount = 1;
+            writeDescriptorSets[0].dstSet = descriptorSets[i].debug;
+            writeDescriptorSets[0].dstBinding = 0;
+            writeDescriptorSets[0].pBufferInfo = &uniformBuffers[i].debug.descriptor;
+
+            writeDescriptorSets[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writeDescriptorSets[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            writeDescriptorSets[1].descriptorCount = 1;
+            writeDescriptorSets[1].dstSet = descriptorSets[i].debug;
+            writeDescriptorSets[1].dstBinding = 1;
+            writeDescriptorSets[1].pBufferInfo = &uniformBuffers[i].params.descriptor;
+
+            vkUpdateDescriptorSets(m_device->getDevice(), static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, NULL);
+        }
         // Material
         {
             // Per-Material descriptor sets
@@ -358,6 +419,47 @@ private:
                         imageDescriptors[1] = material.metallicRoughnessTexture->descriptor;
                     }
                 } 
+                else if (material.pbrWorkflows.specularGlossiness) {
+                    if (material.extension.diffuseTexture) {
+                        imageDescriptors[0] = material.extension.diffuseTexture->descriptor;
+                    }
+                    if (material.extension.specularGlossinessTexture) {
+                        imageDescriptors[1] = material.extension.specularGlossinessTexture->descriptor;
+                    }
+                }
+
+                std::array<VkWriteDescriptorSet, 5> writeDescriptorSets{};
+                for (size_t i = 0; i < imageDescriptors.size(); i++) {
+                    writeDescriptorSets[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    writeDescriptorSets[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                    writeDescriptorSets[i].descriptorCount = 1;
+                    writeDescriptorSets[i].dstSet = material.descriptorSet;
+                    writeDescriptorSets[i].dstBinding = static_cast<uint32_t>(i);
+                    writeDescriptorSets[i].pImageInfo = &imageDescriptors[i];
+                }
+                vkUpdateDescriptorSets(m_device->getDevice(), static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, NULL);
+            }
+
+            for (auto& material : cubeModel.materials) {
+                material.descriptorSet = m_device->createDescriptorSet(m_device->getDevice(), m_device->getDescriptorPool(), descriptorSetLayouts.materials);
+                VkDescriptorImageInfo emptyDescriptorImageInfo{ m_defaultSampler, emptyTexture.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+
+                std::vector<VkDescriptorImageInfo> imageDescriptors = {
+                    emptyDescriptorImageInfo,
+                    emptyDescriptorImageInfo,
+                    material.normalTexture ? material.normalTexture->descriptor : emptyDescriptorImageInfo,
+                    material.occlusionTexture ? material.occlusionTexture->descriptor : emptyDescriptorImageInfo,
+                    material.emissiveTexture ? material.emissiveTexture->descriptor : emptyDescriptorImageInfo
+                };
+
+                if (material.pbrWorkflows.metallicRoughness) {
+                    if (material.baseColorTexture) {
+                        imageDescriptors[0] = material.baseColorTexture->descriptor;
+                    }
+                    if (material.metallicRoughnessTexture) {
+                        imageDescriptors[1] = material.metallicRoughnessTexture->descriptor;
+                    }
+                }
                 else if (material.pbrWorkflows.specularGlossiness) {
                     if (material.extension.diffuseTexture) {
                         imageDescriptors[0] = material.extension.diffuseTexture->descriptor;
@@ -460,7 +562,6 @@ private:
             rasterizer.lineWidth = 1.0f;
             pipelines.wireframe = m_device->createGraphicsPipeline(m_device->getDevice(), m_device->getPipelineCache(), shaderStages_mesh, vertexInputState, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_device->getRenderPass());
         }
-        
         for (auto shaderStage : shaderStages_mesh)
             vkDestroyShaderModule(m_device->getDevice(), shaderStage.module, nullptr);
     }
@@ -514,7 +615,7 @@ private:
             // Model
             vkCmdBindPipeline(currentCB, VK_PIPELINE_BIND_POINT_GRAPHICS, wireframe ? pipelines.wireframe : pipelines.solid);
             vkCmdBindVertexBuffers(currentCB, 0, 1, &meshModel.vertices.buffer, offsets);
-            if (meshModel.indices.buffer != VK_NULL_HANDLE) {
+            if (meshModel.indices.count > 0) {
                 vkCmdBindIndexBuffer(currentCB, meshModel.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
             }
 
@@ -523,6 +624,17 @@ private:
                 renderNode(node, i, vkglTF::Material::ALPHAMODE_OPAQUE);
             }
 
+            // DebugCube
+            vkCmdBindVertexBuffers(currentCB, 0, 1, &cubeModel.vertices.buffer, offsets);
+            if (cubeModel.indices.count > 0) {
+                vkCmdBindIndexBuffer(currentCB, cubeModel.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
+            }
+            
+            for (auto node : cubeModel.nodes) {
+                renderCube(node, i, vkglTF::Material::ALPHAMODE_OPAQUE);
+            }
+
+            //gui->render();
             vkCmdEndRenderPass(currentCB);
             vkEndCommandBuffer(currentCB);
         }
@@ -583,27 +695,99 @@ private:
                     }
                 }
             }
-
         };
         for (auto child : node->children) {
             renderNode(child, cbIndex, alphaMode);
         }
     }
 
-    void mainLoop() {
+    void renderCube(vkglTF::Node* node, uint32_t cbIndex, vkglTF::Material::AlphaMode alphaMode) {
+        if (node->mesh) {
+            for (vkglTF::Primitive* primitive : node->mesh->primitives) {
+                if (primitive->material.alphaMode == alphaMode) {
+                    const std::vector<VkDescriptorSet> descriptorsets = {
+                                descriptorSets[cbIndex].debug,
+                                primitive->material.descriptorSet,
+                                node->mesh->uniformBuffer.descriptorSet,
+                    };
+                    auto commandBuffers = m_device->getCommandBuffers();
+                    vkCmdBindDescriptorSets(commandBuffers[cbIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, static_cast<uint32_t>(descriptorsets.size()), descriptorsets.data(), 0, NULL);
 
+                    // Pass material parameters as push constants
+                    PushConstBlockMaterial pushConstBlockMaterial{};
+                    pushConstBlockMaterial.emissiveFactor = primitive->material.emissiveFactor;
+                    // To save push constant space, availabilty and texture coordiante set are combined
+                    // -1 = texture not used for this material, >= 0 texture used and index of texture coordinate set
+                    pushConstBlockMaterial.colorTextureSet = primitive->material.baseColorTexture != nullptr ? primitive->material.texCoordSets.baseColor : -1;
+                    pushConstBlockMaterial.normalTextureSet = primitive->material.normalTexture != nullptr ? primitive->material.texCoordSets.normal : -1;
+                    pushConstBlockMaterial.occlusionTextureSet = primitive->material.occlusionTexture != nullptr ? primitive->material.texCoordSets.occlusion : -1;
+                    pushConstBlockMaterial.emissiveTextureSet = primitive->material.emissiveTexture != nullptr ? primitive->material.texCoordSets.emissive : -1;
+                    pushConstBlockMaterial.alphaMask = static_cast<float>(primitive->material.alphaMode == vkglTF::Material::ALPHAMODE_MASK);
+                    pushConstBlockMaterial.alphaMaskCutoff = primitive->material.alphaCutoff;
+
+                    if (primitive->material.pbrWorkflows.metallicRoughness) {
+                        // Metallic roughness workflow
+                        pushConstBlockMaterial.workflow = static_cast<float>(PBR_WORKFLOW_METALLIC_ROUGHNESS);
+                        pushConstBlockMaterial.baseColorFactor = primitive->material.baseColorFactor;
+                        pushConstBlockMaterial.metallicFactor = primitive->material.metallicFactor;
+                        pushConstBlockMaterial.roughnessFactor = primitive->material.roughnessFactor;
+                        pushConstBlockMaterial.PhysicalDescriptorTextureSet = primitive->material.metallicRoughnessTexture != nullptr ? primitive->material.texCoordSets.metallicRoughness : -1;
+                        pushConstBlockMaterial.colorTextureSet = primitive->material.baseColorTexture != nullptr ? primitive->material.texCoordSets.baseColor : -1;
+                    }
+
+                    if (primitive->material.pbrWorkflows.specularGlossiness) {
+                        // Specular glossiness workflow
+                        pushConstBlockMaterial.workflow = static_cast<float>(PBR_WORKFLOW_SPECULAR_GLOSINESS);
+                        pushConstBlockMaterial.PhysicalDescriptorTextureSet = primitive->material.extension.specularGlossinessTexture != nullptr ? primitive->material.texCoordSets.specularGlossiness : -1;
+                        pushConstBlockMaterial.colorTextureSet = primitive->material.extension.diffuseTexture != nullptr ? primitive->material.texCoordSets.baseColor : -1;
+                        pushConstBlockMaterial.diffuseFactor = primitive->material.extension.diffuseFactor;
+                        pushConstBlockMaterial.specularFactor = glm::vec4(primitive->material.extension.specularFactor, 1.0f);
+                    }
+
+                    vkCmdPushConstants(commandBuffers[cbIndex], m_pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstBlockMaterial), &pushConstBlockMaterial);
+
+                    for (auto node : meshModel.nodes)
+                        drawDebugBone(node, cbIndex, primitive);
+                }
+            }
+        };
+        for (auto child : node->children) {
+            renderCube(child, cbIndex, alphaMode);
+        }
+    }
+
+    void drawDebugBone(vkglTF::Node* node, uint32_t cbIndex, vkglTF::Primitive* primitive) {
+        if (node->skin) {
+            auto commandBuffers = m_device->getCommandBuffers();
+            for (auto joint : node->skin->joints) {
+                updateDebugUniformBuffer(joint->getMatrix());
+                memcpy(uniformBuffers[m_device->getCurrentFrame()].debug.mapped, &shaderValuesDebug, sizeof(shaderValuesDebug));
+
+                if (primitive->hasIndices) {
+                    vkCmdDrawIndexed(commandBuffers[cbIndex], primitive->indexCount, 1, primitive->firstIndex, 0, 0);
+                }
+                else {
+                    vkCmdDraw(commandBuffers[cbIndex], cubeModel.vertices.count, 1, 0, 0);
+                }
+            }
+        }
+        for (auto child : node->children) {
+            drawDebugBone(child, cbIndex, primitive);
+        }
+    }
+
+    void mainLoop() {
         while (!m_window->getWindowShouldClose()) {
             // Poll for user input.
             glfwPollEvents();
-            gui->beginUpdate();
             render();
-            gui->endUpdate();
         }
         vkDeviceWaitIdle(m_device->getDevice());
     }
 
     void render() {
         auto tStart = std::chrono::high_resolution_clock::now();
+        buildCommandBuffers();
         drawFrame();
         frameCounter++;
         auto tEnd = std::chrono::high_resolution_clock::now();
@@ -697,6 +881,7 @@ private:
     void destroy() {
         gui->destroy();
         meshModel.destroy();
+        cubeModel.destroy();
         emptyTexture.destroy(m_device->getDevice());
         vkDestroySampler(m_device->getDevice(), m_defaultSampler, nullptr);
         vkDestroyDescriptorSetLayout(m_device->getDevice(), descriptorSetLayouts.scene, nullptr);
@@ -706,6 +891,7 @@ private:
         for (auto ubo : uniformBuffers) {
             vkDestroyBuffer(m_device->getDevice(), ubo.scene.buffer, nullptr);
             vkDestroyBuffer(m_device->getDevice(), ubo.params.buffer, nullptr);
+            vkDestroyBuffer(m_device->getDevice(), ubo.debug.buffer, nullptr);
         }
         vkDestroySampler(m_device->getDevice(), m_defaultSampler, nullptr);
         vkDestroyPipeline(m_device->getDevice(), pipelines.solid, nullptr);
@@ -714,7 +900,11 @@ private:
     }
 
     void updateGUI() {
-        
+        {
+            ImGui::Begin("Hello, world!");
+            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+            ImGui::End();
+        }
     }
 };
 

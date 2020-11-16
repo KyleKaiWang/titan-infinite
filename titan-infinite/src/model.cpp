@@ -143,9 +143,10 @@ void VulkanglTFModel::destroy()
 {
 	vkDestroyBuffer(device->getDevice(), vertices.buffer, nullptr);
 	vkFreeMemory(device->getDevice(), vertices.memory, nullptr);
-	vkDestroyBuffer(device->getDevice(), indices.buffer, nullptr);
-	vkFreeMemory(device->getDevice(), indices.memory, nullptr);
-
+	if (indices.count > 0) {
+		vkDestroyBuffer(device->getDevice(), indices.buffer, nullptr);
+		vkFreeMemory(device->getDevice(), indices.memory, nullptr);
+	}
 	if (descriptorSetLayoutUbo != VK_NULL_HANDLE) {
 		vkDestroyDescriptorSetLayout(device->getDevice(), descriptorSetLayoutUbo, nullptr);
 		descriptorSetLayoutUbo = VK_NULL_HANDLE;
