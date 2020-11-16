@@ -4,6 +4,8 @@
  * Copyright (C) 2020 Kyle Wang
  */
 
+#pragma once
+
 struct Transform 
 {
 	glm::vec3 position;

@@ -33,8 +33,7 @@ public:
 	bool showDemoWindow = false;
 
 	void init(Device* device);
-	void draw();
-	void render();
+	void render(std::function<void()> updateFunc);
 	void resize(uint32_t width, uint32_t height);
 
 	void destroy();

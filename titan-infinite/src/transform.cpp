@@ -8,6 +8,7 @@
 #include "transform.h"
 #include <cmath>
 #include <iostream>
+#include <glm/gtx/matrix_decompose.hpp>
 
 #define QUAT_EPSILON 0.000001f
 #define VEC3_EPSILON 0.000001f
@@ -89,25 +90,7 @@ glm::mat4 transformToMat4(const Transform& t) {
 
 Transform mat4ToTransform(const glm::mat4& m) {
 	Transform out;
-
-	out.position = glm::vec3(m[12], m[13], m[14]);
-	out.rotation = glm::toQuat(m);
-
-	glm::mat4 rotScaleMat(
-		m[0], m[1], m[2], 0,
-		m[4], m[5], m[6], 0,
-		m[8], m[9], m[10], 0,
-		0, 0, 0, 1
-	);
-	glm::mat4 invRotMat = glm::toMat4(inverse(out.rotation));
-	glm::mat4 scaleSkewMat = rotScaleMat * invRotMat;
-
-	out.scale = glm::vec3(
-		scaleSkewMat[0],
-		scaleSkewMat[5],
-		scaleSkewMat[10]
-	);
-
+	glm::decompose(m, out.scale, out.rotation, out.position, glm::vec3(0.0), glm::vec4(0.0));
 	return out;
 }
 

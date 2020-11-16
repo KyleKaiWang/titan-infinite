@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2020 Kyle Wang
  */
+#pragma once
 
 class CCDSolver 
 {

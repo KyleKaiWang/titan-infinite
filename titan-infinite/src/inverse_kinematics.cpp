@@ -6,7 +6,6 @@
 
 #include "pch.h"
 #include "inverse_kinematics.h"
-#include <glm/gtx/matrix_decompose.hpp>
 
 CCDSolver::CCDSolver()
 {

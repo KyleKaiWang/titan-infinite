@@ -39,3 +39,4 @@
 #include "texture.h"
 #include "model.h"
 #include "skybox.h"
+#include "inverse_kinematics.h"

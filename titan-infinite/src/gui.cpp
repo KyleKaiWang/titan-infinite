@@ -180,11 +180,7 @@ void Gui::init(Device* device)
 	}
 }
 
-void Gui::draw()
-{
-}
-
-void Gui::render()
+void Gui::render(std::function<void()> updateFunc)
 {
 	ImGui_ImplVulkan_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
@@ -194,10 +190,8 @@ void Gui::render()
 	ImGuiViewport* main_viewport = ImGui::GetMainViewport();
 	ImGui::SetNextWindowPos(ImVec2(main_viewport->GetWorkPos().x + 650, main_viewport->GetWorkPos().y + 20), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(ImVec2(550, 680), ImGuiCond_FirstUseEver);
-	ImGui::Begin("Hello, world!", nullptr, ImGuiWindowFlags_NoBringToFrontOnFocus);
-	ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-	ImGui::End();
-	
+	updateFunc();
+
 	ImGui::Render();
 	ImDrawData* draw_data = ImGui::GetDrawData();
 	const bool main_is_minimized = (draw_data->DisplaySize.x <= 0.0f || draw_data->DisplaySize.y <= 0.0f);
