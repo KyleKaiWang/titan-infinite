@@ -43,7 +43,6 @@ void main()
 			inWeight0.y * node.jointMatrix[int(inJoint0.y)] +
 			inWeight0.z * node.jointMatrix[int(inJoint0.z)] +
 			inWeight0.w * node.jointMatrix[int(inJoint0.w)];
-
 		locPos = ubo.model * node.matrix * skinMat * vec4(inPos, 1.0);
 		outNormal = normalize(transpose(inverse(mat3(ubo.model * node.matrix * skinMat))) * inNormal);
 	} else {

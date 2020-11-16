@@ -21,6 +21,7 @@ layout (set = 0, binding = 1) uniform UBOParams {
 	float scaleIBLAmbient;
 	float debugViewInputs;
 	float debugViewEquation;
+	float debugBone;
 } uboParams;
 
 //layout (set = 0, binding = 2) uniform samplerCube samplerIrradiance;
@@ -409,6 +410,4 @@ void main()
 				break;				
 		}
 	}
-	//outColor = vec4(1.0f);
-	outColor = baseColor;
 }
