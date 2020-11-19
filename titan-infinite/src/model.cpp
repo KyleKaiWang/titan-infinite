@@ -97,7 +97,7 @@ glm::mat4 vkglTF::Node::localMatrix() {
 	return glm::translate(glm::mat4(1.0f), translation) * glm::mat4(rotation) * glm::scale(glm::mat4(1.0f), scale) * matrix;
 }
 
-glm::mat4 vkglTF::Node::getMatrix() {
+glm::mat4 vkglTF::Node::getGlobalMatrix() {
 	glm::mat4 m = localMatrix();
 	vkglTF::Node* p = parent;
 	while (p) {
@@ -107,24 +107,34 @@ glm::mat4 vkglTF::Node::getMatrix() {
 	return m;
 }
 
+glm::mat4 vkglTF::Skin::updateIK(unsigned int index)
+{
+	return ccd_solver->getGlobalTransform(index);
+}
+
 void vkglTF::Node::update() {
 	if (mesh) {
-		glm::mat4 m = getMatrix();
+		glm::mat4 globalMatrix = getGlobalMatrix();
 		if (skin) {
-			mesh->uniformBlock.matrix = m;
+			mesh->uniformBlock.matrix = globalMatrix;
 			// Update join matrices
-			glm::mat4 inverseTransform = glm::inverse(m);
+			glm::mat4 inverseGlobalMatrix = glm::inverse(globalMatrix);
 			for (size_t i = 0; i < skin->joints.size(); i++) {
-				vkglTF::Node* jointNode = skin->joints[i];
-				glm::mat4 jointMat = jointNode->getMatrix() * skin->inverseBindMatrices[i];
-				jointMat = inverseTransform * jointMat;
-				mesh->uniformBlock.jointMatrix[i] = jointMat;
+				glm::mat4 joint_matrix;
+				// Update IK
+				if (skin->ccd_solver && skin->ccd_solver->size() > 0)
+					joint_matrix = inverseGlobalMatrix * skin->updateIK(i) * skin->inverseBindMatrices[i];
+				else
+					joint_matrix = inverseGlobalMatrix * skin->joints[i]->getGlobalMatrix() * skin->inverseBindMatrices[i];
+				
+				// Update uniform buffer
+				mesh->uniformBlock.jointMatrix[i] = joint_matrix;
 			}
 			mesh->uniformBlock.jointcount = (float)skin->joints.size();
 			memcpy(mesh->uniformBuffer.mapped, &mesh->uniformBlock, sizeof(mesh->uniformBlock));
 		}
 		else {
-			memcpy(mesh->uniformBuffer.mapped, &m, sizeof(glm::mat4));
+			memcpy(mesh->uniformBuffer.mapped, &globalMatrix, sizeof(glm::mat4));
 		}
 	}
 	for (auto& child : children) {
@@ -215,7 +225,7 @@ void VulkanglTFModel::loadFromFile(const std::string& filename, Device* _device,
 		const bool flipY = fileLoadingFlags & FileLoadingFlags::FlipY;
 		for (Node* node : linearNodes) {
 			if (node->mesh) {
-				const glm::mat4 localMatrix = node->getMatrix();
+				const glm::mat4 localMatrix = node->getGlobalMatrix();
 				for (Primitive* primitive : node->mesh->primitives) {
 					for (uint32_t i = 0; i < primitive->vertexCount; i++) {
 						Vertex& vertex = vertexBuffer[primitive->firstVertex + i];
@@ -764,7 +774,6 @@ void VulkanglTFModel::loadSkins(tinygltf::Model& gltfModel)
 			newSkin->inverseBindMatrices.resize(accessor.count);
 			memcpy(newSkin->inverseBindMatrices.data(), &buffer.data[accessor.byteOffset + bufferView.byteOffset], accessor.count * sizeof(glm::mat4));
 		}
-
 		skins.push_back(newSkin);
 	}
 }
@@ -1086,7 +1095,7 @@ void VulkanglTFModel::calculateBoundingBox(Node* node, Node* parent) {
 
 	if (node->mesh) {
 		if (node->mesh->bb.valid) {
-			node->aabb = node->mesh->bb.getAABB(node->getMatrix());
+			node->aabb = node->mesh->bb.getAABB(node->getGlobalMatrix());
 			if (node->children.size() == 0) {
 				node->bvh.min = node->aabb.min;
 				node->bvh.max = node->aabb.max;

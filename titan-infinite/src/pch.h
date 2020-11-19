@@ -37,6 +37,6 @@
 #include "memory.h"
 #include "buffer.h"
 #include "texture.h"
+#include "inverse_kinematics.h"
 #include "model.h"
 #include "skybox.h"
-#include "inverse_kinematics.h"

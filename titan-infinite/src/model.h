@@ -13,7 +13,7 @@ namespace vkglTF {
 	extern VkDescriptorSetLayout descriptorSetLayoutUbo;
 	extern VkMemoryPropertyFlags memoryPropertyFlags;
 
-	struct Node;
+	struct Node; 
 
 	struct BoundingBox {
 		glm::vec3 min;
@@ -135,6 +135,8 @@ namespace vkglTF {
 		Node* skeletonRoot = nullptr;
 		std::vector<glm::mat4> inverseBindMatrices;
 		std::vector<Node*> joints;
+		CCDSolver* ccd_solver;
+		glm::mat4 updateIK(unsigned int index);
 	};
 
 	/*
@@ -157,7 +159,7 @@ namespace vkglTF {
 		BoundingBox aabb;
 
 		glm::mat4 localMatrix();
-		glm::mat4 getMatrix();
+		glm::mat4 getGlobalMatrix();
 		void update();
 	};
 
@@ -204,7 +206,6 @@ namespace vkglTF {
 		glm::vec2 uv1;
 		glm::vec4 joint0;
 		glm::vec4 weight0;
-		//glm::vec4 tangent;
 	};
 
 	enum FileLoadingFlags {
@@ -257,6 +258,7 @@ namespace vkglTF {
 
 		bool buffersBound = false;
 		std::string path;
+		bool enableIK = true;
 
 		void destroy();
 		void loadFromFile(const std::string& filename, Device* device, VkQueue transferQueue, uint32_t fileLoadingFlags = vkglTF::FileLoadingFlags::None, float scale = 1.0f);

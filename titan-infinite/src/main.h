@@ -63,7 +63,7 @@ private:
         VkPipeline wireframe = VK_NULL_HANDLE;
     } pipelines;
 
-    bool wireframe = true;
+    bool wireframe = false;
 
     struct DescriptorSetLayouts
     {
@@ -148,6 +148,13 @@ private:
         glm::vec3 rotateAngelPerAxis;
     }transform;
 
+    struct IK
+    {
+        glm::vec3 target;
+        CCDSolver* solver;
+    }ccd_ik;
+
+    bool enable_IK = false;
     std::vector<glm::mat4> bonesToDraw;
 
     void initResource() 
@@ -194,9 +201,22 @@ private:
     }
 
     void loadAssets() {
-        meshModel.loadFromFile("data/models/glTF-Embedded/SimpleSkin.gltf", m_device, m_device->getGraphicsQueue());
+        meshModel.loadFromFile("data/models/glTF-Embedded/robotic_arm_2/scene.gltf", m_device, m_device->getGraphicsQueue());
         cubeModel.loadFromFile("data/models/glTF-Embedded/Box.gltf", m_device, m_device->getGraphicsQueue());
 
+        // IK setup
+        ccd_ik.solver = new CCDSolver();
+        ccd_ik.target = glm::vec3(0.0f, 5.0f, 0.0f);
+        for (auto skin : meshModel.skins) {
+            skin->ccd_solver = ccd_ik.solver;
+            auto size = skin->joints.size();
+            ccd_ik.solver->resize(size);
+            ccd_ik.solver->setNumSteps(size);
+            for (int i = 0; i < size; ++i) {
+                ccd_ik.solver->setIKchain(skin->joints[i]->getGlobalMatrix(), i);
+            }
+        }
+        ccd_ik.solver->solve(ccd_ik.target);
         m_defaultSampler = texture::createSampler(
             m_device->getDevice(),
             VK_FILTER_LINEAR,
@@ -262,7 +282,8 @@ private:
         shaderValuesScene.model[0][0] = scale;
         shaderValuesScene.model[1][1] = scale;
         shaderValuesScene.model[2][2] = scale;
-        shaderValuesScene.model = glm::translate(shaderValuesScene.model, translate);
+        //shaderValuesScene.model = glm::translate(shaderValuesScene.model, translate);
+        //shaderValuesScene.model *= ccd_ik.solver.getGlobalTransform();
 
         shaderValuesScene.camPos = m_camera->position;     
     }
@@ -270,7 +291,7 @@ private:
         shaderValuesDebug.projection = m_camera->matrices.perspective;
         shaderValuesDebug.view = m_camera->matrices.view;
         shaderValuesDebug.camPos = m_camera->position;
-        shaderValuesDebug.model = glm::scale(model, glm::vec3(0.1));
+        shaderValuesDebug.model = glm::scale(model, glm::vec3(0.01));
     }
 
     void initDescriptorPool()
@@ -758,12 +779,14 @@ private:
     }
 
     void drawDebugBone(vkglTF::Node* node, uint32_t cbIndex, vkglTF::Primitive* primitive) {
+
         if (node->skin) {
             auto commandBuffers = m_device->getCommandBuffers();
-            for (auto joint : node->skin->joints) {
-                updateDebugUniformBuffer(joint->getMatrix());
+            
+            for (size_t i = 0; i < node->mesh->uniformBlock.jointcount; ++i) {
+                updateDebugUniformBuffer(node->getGlobalMatrix() * node->mesh->uniformBlock.jointMatrix[i]);
                 memcpy(uniformBuffers[m_device->getCurrentFrame()].debug.mapped, &shaderValuesDebug, sizeof(shaderValuesDebug));
-
+        
                 if (primitive->hasIndices) {
                     vkCmdDrawIndexed(commandBuffers[cbIndex], primitive->indexCount, 1, primitive->firstIndex, 0, 0);
                 }
@@ -788,6 +811,7 @@ private:
 
     void render() {
         auto tStart = std::chrono::high_resolution_clock::now();
+
         buildCommandBuffers();
         drawFrame();
         frameCounter++;
@@ -876,7 +900,23 @@ private:
             }
             meshModel.updateAnimation(animationIndex, animationTimer);
         }
+        else if (enable_IK) {
+            // Update IK
+            ccd_ik.solver->solve(ccd_ik.target);
+            for (auto& node : meshModel.nodes) {
+                updateModelNode(node);
+            }
+        }
         updateUniformBuffer();
+    }
+
+    void updateModelNode(vkglTF::Node* node) {
+        if (node->mesh) {
+            node->update();
+        }
+        for (auto child : node->children) {
+            updateModelNode(child);
+        }
     }
 
     void destroy() {
@@ -903,6 +943,10 @@ private:
     void updateGUI() {
         ImGui::Begin("Hello, world!");
         ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+        ImGui::Checkbox("Enable Animation Update", &animate);
+        ImGui::Checkbox("Show Wireframe", &wireframe);
+        ImGui::Checkbox("Enable IK", &enable_IK);
+        ImGui::SliderFloat3("IK Target", glm::value_ptr(ccd_ik.target), -100.0f, 100.0f);
         ImGui::End();
     }
 };
