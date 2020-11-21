@@ -107,7 +107,7 @@ glm::mat4 vkglTF::Node::getGlobalMatrix() {
 	return m;
 }
 
-glm::mat4 vkglTF::Skin::updateIK(unsigned int index)
+glm::mat4 vkglTF::Skin::getSolverIK(unsigned int index)
 {
 	return ccd_solver->getGlobalTransform(index);
 }
@@ -119,12 +119,12 @@ void vkglTF::Node::update() {
 			mesh->uniformBlock.matrix = globalMatrix;
 			// Update join matrices
 			glm::mat4 inverseGlobalMatrix = glm::inverse(globalMatrix);
-			for (size_t i = 0; i < skin->joints.size(); i++) {
+			for (size_t i = 0; i < skin->joints.size(); ++i) {
 				glm::mat4 joint_matrix;
 				// Update IK
 				if (skin->ccd_solver && skin->ccd_solver->size() > 0)
-					joint_matrix = inverseGlobalMatrix * skin->updateIK(i) * skin->inverseBindMatrices[i];
-				else
+					joint_matrix = skin->getSolverIK(i);
+				else 
 					joint_matrix = inverseGlobalMatrix * skin->joints[i]->getGlobalMatrix() * skin->inverseBindMatrices[i];
 				
 				// Update uniform buffer
@@ -211,6 +211,8 @@ void VulkanglTFModel::loadFromFile(const std::string& filename, Device* _device,
 				node->update();
 			}
 		}
+
+		setupIK();
 	}
 	else
 	{
@@ -774,6 +776,9 @@ void VulkanglTFModel::loadSkins(tinygltf::Model& gltfModel)
 			newSkin->inverseBindMatrices.resize(accessor.count);
 			memcpy(newSkin->inverseBindMatrices.data(), &buffer.data[accessor.byteOffset + bufferView.byteOffset], accessor.count * sizeof(glm::mat4));
 		}
+		
+		// Inverse Kinematics
+		newSkin->ccd_solver = new CCDSolver();
 		skins.push_back(newSkin);
 	}
 }
@@ -1244,5 +1249,31 @@ void VulkanglTFModel::initNodeDescriptor(vkglTF::Node* node, VkDescriptorSetLayo
 	}
 	for (auto& child : node->children) {
 		initNodeDescriptor(child, descriptorSetLayout);
+	}
+}
+
+void VulkanglTFModel::setupIK()
+{
+	for (auto node : nodes) {
+		setupIK_internal(node);
+	}
+}
+
+void vkglTF::VulkanglTFModel::setupIK_internal(vkglTF::Node* node)
+{
+	if (node->mesh) {
+		glm::mat4 globalMatrix = node->getGlobalMatrix();
+		glm::mat4 inverseGlobalMatrix = glm::inverse(globalMatrix);
+		if (node->skin) {
+			auto size = node->skin->joints.size();
+			node->skin->ccd_solver->resize(size);
+			node->skin->ccd_solver->setNumSteps(size);
+			for (int i = 0; i < size; ++i) {
+				node->skin->ccd_solver->setIKchain(inverseGlobalMatrix * node->skin->joints[i]->getGlobalMatrix() * node->skin->inverseBindMatrices[i], i);
+			}
+		}
+	}
+	for (auto& child : node->children) {
+		setupIK_internal(child);
 	}
 }

@@ -96,11 +96,11 @@ bool CCDSolver::solve(const glm::vec3& target)
 
 			glm::quat worldRotated = rotation * effectorToGoal;
 			glm::quat localRotate = worldRotated * inverse(rotation);
-			m_IKchain[j] = glm::toMat4(localRotate) * m_IKchain[j];
+			m_IKchain[j] *= glm::toMat4(localRotate);
 
 			effector = getGlobalPosition(last);
 			float dist = glm::length2(goal - effector);
-			if (dist > thresholdSq) {
+			if (dist < thresholdSq) {
 				return true;
 			}
 		}

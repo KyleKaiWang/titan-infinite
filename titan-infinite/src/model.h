@@ -136,7 +136,7 @@ namespace vkglTF {
 		std::vector<glm::mat4> inverseBindMatrices;
 		std::vector<Node*> joints;
 		CCDSolver* ccd_solver;
-		glm::mat4 updateIK(unsigned int index);
+		glm::mat4 getSolverIK(unsigned int index);
 	};
 
 	/*
@@ -279,5 +279,7 @@ namespace vkglTF {
 		void initNodeDescriptor(vkglTF::Node* node, VkDescriptorSetLayout descriptorSetLayout);
 		VkFilter getVkFilterMode(int32_t filterMode);
 		VkSamplerAddressMode getVkWrapMode(int32_t wrapMode);
+		void setupIK();
+		void setupIK_internal(vkglTF::Node* node);
 	};
 }
