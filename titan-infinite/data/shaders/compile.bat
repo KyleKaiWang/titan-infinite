@@ -6,4 +6,6 @@
 %VK_SDK_PATH%/Bin32/glslc.exe irmap.comp -o irmap.comp.spv
 %VK_SDK_PATH%/Bin32/glslc.exe spbrdf.comp -o spbrdf.comp.spv
 %VK_SDK_PATH%/Bin32/glslc.exe spmap.comp -o spmap.comp.spv
+%VK_SDK_PATH%/Bin32/glslc.exe debug_draw.vert -o debug_draw.vert.spv
+%VK_SDK_PATH%/Bin32/glslc.exe debug_draw.frag -o debug_draw.frag.spv
 pause

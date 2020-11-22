@@ -156,6 +156,8 @@ private:
     bool enable_IK = false;
     std::vector<glm::mat4> bonesToDraw;
 
+    LineSegment* line_segment;
+
     void initResource() 
     {
         // Camera
@@ -182,17 +184,19 @@ private:
         gui = new Gui();
         gui->init(m_device);
 
-        // Bone debug
-        //transform.positionPerAxis = glm::vec3(0.3f, -0.055f, 0.30f);
-        //transform.rotateAngelPerAxis = glm::vec3(0.0f, glm::radians(00.0f), 0.0f);
-        //transform.scalePerAxis = glm::vec3(50.0f, 5.0f, 40.0f);
-
         uniformBuffers.resize(m_device->getSwapChainimages().size());
         descriptorSets.resize(m_device->getSwapChainimages().size());
 
         loadAssets();
         initUniformBuffers();
         initDescriptorPool();
+
+        // Descriptor Must be initialize after descriptor pool
+        
+        // Debug Line
+        line_segment = new LineSegment(m_device);
+        line_segment->init();
+
         initDescriptorSetLayout();
         initDescriptorSet();
         initPipelines();
@@ -200,7 +204,7 @@ private:
     }
 
     void loadAssets() {
-        meshModel.loadFromFile("data/models/glTF-Embedded/robotic_arm_2/scene.gltf", m_device, m_device->getGraphicsQueue());
+        meshModel.loadFromFile("data/models/glTF-Embedded/CesiumMan.gltf", m_device, m_device->getGraphicsQueue());
         cubeModel.loadFromFile("data/models/glTF-Embedded/Box.gltf", m_device, m_device->getGraphicsQueue());
         // IK setup
         ccd_ik.target = glm::vec3(0.0f, 5.0f, 0.0f);
@@ -568,11 +572,11 @@ private:
         pipelines.solid = m_device->createGraphicsPipeline(m_device->getDevice(), m_device->getPipelineCache(), shaderStages_mesh, vertexInputState, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_device->getRenderPass());
 
         // Wire frame rendering pipeline
-        if (wireframe) {
+        //if (wireframe) {
             rasterizer.polygonMode = VK_POLYGON_MODE_LINE;
             rasterizer.lineWidth = 1.0f;
             pipelines.wireframe = m_device->createGraphicsPipeline(m_device->getDevice(), m_device->getPipelineCache(), shaderStages_mesh, vertexInputState, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_device->getRenderPass());
-        }
+        //}
         for (auto shaderStage : shaderStages_mesh)
             vkDestroyShaderModule(m_device->getDevice(), shaderStage.module, nullptr);
     }
@@ -602,11 +606,10 @@ private:
             VkDeviceSize offsets[1] = { 0 };
 
             VkCommandBuffer currentCB = m_device->m_commandBuffers[i];
-
-            //vkResetCommandBuffer(m_device->m_commandBuffers[i], 0);
             if (vkBeginCommandBuffer(currentCB, &beginInfo) != VK_SUCCESS) {
                 throw std::runtime_error("failed to begin recording command buffer!");
             }
+            line_segment->updateVertexBuffer(currentCB, glm::vec3(0.0), glm::vec3(5.0));
             vkCmdBeginRenderPass(currentCB, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
             VkViewport viewport{};
@@ -636,18 +639,19 @@ private:
             }
 
             // DebugCube
-            vkCmdBindVertexBuffers(currentCB, 0, 1, &cubeModel.vertices.buffer, offsets);
-            if (cubeModel.indices.count > 0) {
-                vkCmdBindIndexBuffer(currentCB, cubeModel.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
-            }
+            //vkCmdBindVertexBuffers(currentCB, 0, 1, &cubeModel.vertices.buffer, offsets);
+            //if (cubeModel.indices.count > 0) {
+            //    vkCmdBindIndexBuffer(currentCB, cubeModel.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
+            //}
             
+            line_segment->draw(currentCB);
             //for (auto node : cubeModel.nodes) {
             //    renderCube(node, i, vkglTF::Material::ALPHAMODE_OPAQUE);
             //}
 
             auto update_gui = std::bind(&Application::updateGUI, this);
-            gui->render(update_gui);
             vkCmdEndRenderPass(currentCB);
+            //gui->render(update_gui);
             vkEndCommandBuffer(currentCB);
         }
     }
@@ -858,6 +862,7 @@ private:
         memcpy(currentUB.scene.mapped, &shaderValuesScene, sizeof(shaderValuesScene));
         memcpy(currentUB.params.mapped, &shaderValuesParams, sizeof(shaderValuesParams));
         //skybox.updateUniformBuffer();
+        line_segment->updateUniformBuffer(m_camera);
 
         m_device->submitCommandBuffer(m_device->getGraphicsQueue(), &submitInfo, m_device->waitFences[m_device->getCurrentFrame()]);
 
