@@ -28,6 +28,10 @@ struct Window {
     double m_prevCursorY = 0.0;
     double m_currCursorX = 0.0;
     double m_currCursorY = 0.0;
+    float m_currMouseScrolOffsetX = 0;
+    float m_currMouseScrolOffsetY = 0;
+    float m_prevMouseScrolOffsetX = 0;
+    float m_prevMouseScrolOffsetY = 0;
 
     bool m_framebufferResized = false;
 
@@ -141,9 +145,18 @@ struct Window {
 
     static void mouseScrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
         Window* self = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
-        self->m_camera->distance += ZoomSpeed * float(-yoffset);
-        if (self->m_camera->distance < 0.0f)
-            self->m_camera->distance = 0.0f;
+        //self->m_camera->distance += ZoomSpeed * float(-yoffset);
+        //if (self->m_camera->distance < 0.0f)
+        //    self->m_camera->distance = 0.0f;
+
+        self->m_currMouseScrolOffsetX = float(xoffset);
+        self->m_currMouseScrolOffsetY = float(yoffset);
+
+        self->m_camera->position += self->m_currMouseScrolOffsetY * self->m_camera->front * self->m_camera->movementSpeed;
+        self->m_camera->updateViewMatrix();
+
+        self->m_prevMouseScrolOffsetX = self->m_currMouseScrolOffsetX;
+        self->m_prevMouseScrolOffsetY = self->m_currMouseScrolOffsetY;
     }
 
     static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {

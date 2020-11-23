@@ -111,10 +111,8 @@ struct Camera
 	void update(float deltaTime)
 	{
 		updated = false;
-		if (type == CameraType::lookat)
-		{
-			if (moving())
-			{
+		if (type == CameraType::lookat) {
+			if (moving()) {
 				glm::vec3 front;
 				front.x = -cos(glm::radians(rotation.x)) * sin(glm::radians(rotation.y));
 				front.y =  sin(glm::radians(rotation.x));
@@ -124,9 +122,9 @@ struct Camera
 				float moveSpeed = deltaTime * movementSpeed;
 
 				if (keys.up)
-					position += front * moveSpeed;
-				if (keys.down)
 					position -= front * moveSpeed;
+				if (keys.down)
+					position += front * moveSpeed;
 				if (keys.left)
 					position -= right * moveSpeed;
 				if (keys.right)
