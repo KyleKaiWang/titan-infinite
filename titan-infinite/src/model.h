@@ -5,6 +5,7 @@
  */
 
 #pragma once
+#include "line_segment.h"
 #define MAX_NUM_JOINTS 128
 
 namespace vkglTF {
@@ -135,6 +136,8 @@ namespace vkglTF {
 		Node* skeletonRoot = nullptr;
 		std::vector<glm::mat4> inverseBindMatrices;
 		std::vector<Node*> joints;
+
+		bool enableIK = false;
 		CCDSolver* ccd_solver;
 		glm::mat4 getSolverIK(unsigned int index);
 	};
@@ -260,6 +263,8 @@ namespace vkglTF {
 		std::string path;
 		bool enableIK = true;
 
+		LineSegment* debug_line_segment;
+
 		void destroy();
 		void loadFromFile(const std::string& filename, Device* device, VkQueue transferQueue, uint32_t fileLoadingFlags = vkglTF::FileLoadingFlags::None, float scale = 1.0f);
 		void loadNode(vkglTF::Node* parent, const tinygltf::Node& node, uint32_t nodeIndex, const tinygltf::Model& model, std::vector<uint32_t>& indexBuffer, std::vector<Vertex>& vertexBuffer, float globalscale);
@@ -281,5 +286,8 @@ namespace vkglTF {
 		VkSamplerAddressMode getVkWrapMode(int32_t wrapMode);
 		void setupIK();
 		void setupIK_internal(vkglTF::Node* node);
+		void setEnableIK(bool enable);
+		void setEnableIK_internal(vkglTF::Node* node, bool enable);
+		void drawJoint(VkCommandBuffer commandBuffer);
 	};
 }

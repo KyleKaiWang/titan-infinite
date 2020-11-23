@@ -153,10 +153,8 @@ private:
         glm::vec3 target;
     }ccd_ik;
 
+    bool enable_debug_joints = false;
     bool enable_IK = false;
-    std::vector<glm::mat4> bonesToDraw;
-
-    LineSegment* line_segment;
 
     void initResource() 
     {
@@ -191,11 +189,9 @@ private:
         initUniformBuffers();
         initDescriptorPool();
 
-        // Descriptor Must be initialize after descriptor pool
-        
-        // Debug Line
-        line_segment = new LineSegment(m_device);
-        line_segment->init();
+        // Debug Line Segment
+        meshModel.debug_line_segment = new LineSegment(m_device);
+        meshModel.debug_line_segment->init();
 
         initDescriptorSetLayout();
         initDescriptorSet();
@@ -609,7 +605,7 @@ private:
             if (vkBeginCommandBuffer(currentCB, &beginInfo) != VK_SUCCESS) {
                 throw std::runtime_error("failed to begin recording command buffer!");
             }
-            line_segment->updateVertexBuffer(currentCB, glm::vec3(0.0), glm::vec3(5.0));
+            
             vkCmdBeginRenderPass(currentCB, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
             VkViewport viewport{};
@@ -643,15 +639,16 @@ private:
             //if (cubeModel.indices.count > 0) {
             //    vkCmdBindIndexBuffer(currentCB, cubeModel.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
             //}
-            
-            line_segment->draw(currentCB);
             //for (auto node : cubeModel.nodes) {
             //    renderCube(node, i, vkglTF::Material::ALPHAMODE_OPAQUE);
             //}
 
+            if(enable_debug_joints)
+                meshModel.drawJoint(currentCB);
+
             auto update_gui = std::bind(&Application::updateGUI, this);
             vkCmdEndRenderPass(currentCB);
-            //gui->render(update_gui);
+            gui->render(update_gui);
             vkEndCommandBuffer(currentCB);
         }
     }
@@ -861,9 +858,10 @@ private:
         UniformBufferSet currentUB = uniformBuffers[imageIndex];
         memcpy(currentUB.scene.mapped, &shaderValuesScene, sizeof(shaderValuesScene));
         memcpy(currentUB.params.mapped, &shaderValuesParams, sizeof(shaderValuesParams));
-        //skybox.updateUniformBuffer();
-        line_segment->updateUniformBuffer(m_camera);
-
+        
+        // Debug Line Segment
+        meshModel.debug_line_segment->updateUniformBuffer(m_camera, shaderValuesScene.model);
+        
         m_device->submitCommandBuffer(m_device->getGraphicsQueue(), &submitInfo, m_device->waitFences[m_device->getCurrentFrame()]);
 
         VkPresentInfoKHR presentInfo{};
@@ -929,7 +927,6 @@ private:
             vkDestroyBuffer(m_device->getDevice(), ubo.params.buffer, nullptr);
             vkDestroyBuffer(m_device->getDevice(), ubo.debug.buffer, nullptr);
         }
-        vkDestroySampler(m_device->getDevice(), m_defaultSampler, nullptr);
         vkDestroyPipeline(m_device->getDevice(), pipelines.solid, nullptr);
         vkDestroyPipeline(m_device->getDevice(), pipelines.wireframe, nullptr);
         vkDestroyPipelineLayout(m_device->getDevice(), m_pipelineLayout, nullptr);
@@ -941,6 +938,7 @@ private:
         ImGui::Checkbox("Enable Animation Update", &animate);
         ImGui::Checkbox("Show Wireframe", &wireframe);
         ImGui::Checkbox("Enable IK", &enable_IK);
+        ImGui::Checkbox("Enable Debug Joints", &enable_debug_joints);
         ImGui::SliderFloat3("IK Target", glm::value_ptr(ccd_ik.target), -100.0f, 100.0f);
         ImGui::End();
     }

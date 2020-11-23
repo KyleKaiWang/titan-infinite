@@ -6,6 +6,7 @@
 
 #include "pch.h"
 #include "model.h"
+#include <glm/gtx/matrix_decompose.hpp>
 
 #define TINYGLTF_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
@@ -122,7 +123,7 @@ void vkglTF::Node::update() {
 			for (size_t i = 0; i < skin->joints.size(); ++i) {
 				glm::mat4 joint_matrix;
 				// Update IK
-				if (skin->ccd_solver && skin->ccd_solver->size() > 0)
+				if (skin->enableIK && skin->ccd_solver && skin->ccd_solver->size() > 0)
 					joint_matrix = skin->getSolverIK(i);
 				else 
 					joint_matrix = inverseGlobalMatrix * skin->joints[i]->getGlobalMatrix() * skin->inverseBindMatrices[i];
@@ -1275,5 +1276,46 @@ void vkglTF::VulkanglTFModel::setupIK_internal(vkglTF::Node* node)
 	}
 	for (auto& child : node->children) {
 		setupIK_internal(child);
+	}
+}
+
+void vkglTF::VulkanglTFModel::setEnableIK(bool enable)
+{
+	for (auto& node : nodes)
+		setEnableIK_internal(node, enable);
+}
+
+void vkglTF::VulkanglTFModel::setEnableIK_internal(vkglTF::Node* node, bool enable)
+{
+	if (node->skin)
+		node->skin->enableIK = enable;
+	for (auto& child : node->children) {
+		setupIK_internal(child);
+	}
+}
+
+glm::vec3 getPositionFromMat4(glm::mat4 mat)
+{
+	glm::vec3 pos;
+	glm::decompose(mat, glm::vec3(), glm::quat(), pos, glm::vec3(), glm::vec4());
+	return pos;
+}
+
+void vkglTF::VulkanglTFModel::drawJoint(VkCommandBuffer commandBuffer)
+{
+	for (auto skin : skins) {
+		for (auto joint : skin->joints) {
+
+			// Parent Joint
+			glm::mat4 p_mat = joint->parent->getGlobalMatrix();
+			glm::vec3 p_pos = getPositionFromMat4(p_mat);
+
+			// Child Joint
+			glm::mat4 mat = joint->getGlobalMatrix();
+			glm::vec3 pos = getPositionFromMat4(mat);
+
+			debug_line_segment->updateVertexBuffer(commandBuffer, p_pos, pos);
+			debug_line_segment->draw(commandBuffer);
+		}
 	}
 }

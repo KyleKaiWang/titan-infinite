@@ -4,6 +4,7 @@
  * Copyright (C) 2020 Kyle Wang
  */
 
+#pragma once
 #include "device.h"
 #include "buffer.h"
 #include <vector>
@@ -23,7 +24,12 @@ public:
 	}
 
 	~LineSegment() {
+		vkDestroyDescriptorSetLayout(m_device->getDevice(), m_descriptorSetLayout, nullptr);
+		vkDestroyPipelineLayout(m_device->getDevice(), m_pipelineLayout, nullptr);
+		vkDestroyPipeline(m_device->getDevice(), m_pipeline, nullptr);
 		vkDestroyBuffer(m_device->getDevice(), vertices.buffer, nullptr);
+		for (auto buffer : m_uniformBuffers)
+			buffer.destroy();
 	}
 
 
@@ -53,6 +59,8 @@ private:
 public:
 	void init() {
 		if (initialized) return;
+		assert(m_device->getDescriptorPool() != VK_NULL_HANDLE);
+
 		std::vector<glm::vec3> vertice;
 		vertice.push_back(m_origin);
 		vertice.push_back(m_destination);
@@ -153,9 +161,9 @@ public:
 		multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 		
 		DepthStencilState depthStencil{};
-		depthStencil.depthTestEnable = VK_TRUE;
-		depthStencil.depthWriteEnable = VK_TRUE;
-		depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+		depthStencil.depthTestEnable = VK_FALSE;
+		depthStencil.depthWriteEnable = VK_FALSE;
+		depthStencil.depthCompareOp = VK_COMPARE_OP_NEVER;
 		depthStencil.depthBoundsTestEnable = VK_FALSE;
 		depthStencil.stencilTestEnable = VK_FALSE;
 		depthStencil.front = depthStencil.back;
@@ -189,8 +197,8 @@ public:
 		initialized = true;
 	}
 
-	void updateUniformBuffer(Camera* camera) {
-		ubo.mvp = camera->matrices.perspective * camera->matrices.view;
+	void updateUniformBuffer(Camera* camera, glm::mat4 model = glm::mat4(1.0)) {
+		ubo.mvp = camera->matrices.perspective * camera->matrices.view * model;
 		ubo.color = glm::vec4(0.0, 1.0, 0.0, 1.0);
 
 		auto imageIndex = m_device->getCurrentFrame();
