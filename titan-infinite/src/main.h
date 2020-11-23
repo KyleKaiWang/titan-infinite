@@ -153,6 +153,7 @@ private:
         glm::vec3 target;
     }ccd_ik;
 
+    bool enable_slerp = true;
     bool enable_debug_joints = false;
     bool enable_IK = false;
 
@@ -936,6 +937,7 @@ private:
         ImGui::Begin("Scene Settings");
         ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
         ImGui::Checkbox("Enable Animation Update", &animate);
+        ImGui::Checkbox("Enable slerp", &enable_slerp);
         ImGui::Checkbox("Show Wireframe", &wireframe);
         ImGui::Checkbox("Enable IK", &enable_IK);
         ImGui::Checkbox("Enable Debug Joints", &enable_debug_joints);
