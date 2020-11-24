@@ -12,7 +12,7 @@ struct Camera
 {
 	float pitch = 0.0f;
 	float yaw = 0.0f;
-	float distance = 5.0;
+	//float distance = 5.0;
 	float fov = 45.0;
 	float znear, zfar;
 
