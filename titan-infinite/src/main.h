@@ -150,7 +150,7 @@ private:
 
     struct IK
     {
-        glm::vec3 target;
+        glm::vec3 target = glm::vec3(0.0f, 5.0f, 0.0f);
     }ccd_ik;
 
     bool enable_slerp = true;
@@ -161,13 +161,12 @@ private:
     {
         // Camera
         m_camera = new Camera();
-        m_camera->distance = 1.0f;
         m_camera->fov = 45.0f;
         m_camera->type = Camera::CameraType::lookat;
         m_camera->setPerspective(45.0f, (float)WIDTH / (float)HEIGHT, 0.1f, 1000.0f);
         m_camera->rotationSpeed = 0.25f;
         m_camera->movementSpeed = 1.0f;
-        m_camera->setPosition({ 0.0f, 0.0f, m_camera->distance });
+        m_camera->setPosition({ 0.0f, 0.3f, 1.0f });
         m_camera->setRotation({ 0.0f, 0.0f, 0.0f });
 
         // glfw window
@@ -203,8 +202,6 @@ private:
     void loadAssets() {
         meshModel.loadFromFile("data/models/glTF-Embedded/CesiumMan.gltf", m_device, m_device->getGraphicsQueue());
         cubeModel.loadFromFile("data/models/glTF-Embedded/Box.gltf", m_device, m_device->getGraphicsQueue());
-        // IK setup
-        ccd_ik.target = glm::vec3(0.0f, 5.0f, 0.0f);
         
         //meshModel.setupIK(ccd_ik.solver);
 
@@ -274,7 +271,6 @@ private:
         shaderValuesScene.model[1][1] = scale;
         shaderValuesScene.model[2][2] = scale;
         //shaderValuesScene.model = glm::translate(shaderValuesScene.model, translate);
-        //shaderValuesScene.model *= ccd_ik.solver.getGlobalTransform();
 
         shaderValuesScene.camPos = m_camera->position;     
     }
