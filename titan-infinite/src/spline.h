@@ -8,12 +8,12 @@
 
 struct TableValue
 {
+	TableValue(float dist, float point, int index) 
+		: distance(dist), pointOnCurve(point), curveIndex(index) {}
+	
 	float distance;
 	float pointOnCurve;
 	int curveIndex;
-
-	TableValue(float d, float p, int i) : distance(d), pointOnCurve(p), curveIndex(i)
-	{}
 };
 
 class Spline
@@ -49,6 +49,9 @@ private:
 	VkPipelineLayout m_pipelineLayout;
 	VkPipeline m_pipeline;
 
+	std::vector<TableValue> m_arcTable;
+	float m_factor;
+
 public:
 	std::vector<glm::vec3> m_controlPoints;
 	std::vector<glm::vec3> m_interpolatedPoints;
@@ -58,8 +61,4 @@ public:
 		Buffer controlPoints;
 		Buffer interpolatedPoints;
 	} buffers;
-
-	std::vector<TableValue> m_arcTable;
-
-	float someFactor = 6.0f;
 };

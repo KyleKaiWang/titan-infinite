@@ -15,8 +15,10 @@
 #include <glm/gtc/type_ptr.hpp>
 
 Spline::Spline(Device* device)
-	: m_device(device), m_lineWidth(10.0f)
+	: m_device(device), m_lineWidth(10.0f), m_factor(6.0f), m_descriptorSetLayout(VK_NULL_HANDLE), m_pipelineLayout(VK_NULL_HANDLE), m_pipeline(VK_NULL_HANDLE)
 {
+	ubo.mvp = glm::mat4(1.0f);
+	ubo.color = glm::vec4(0.0f, 1.0f, 0.0f, 1.0f);
 }
 
 Spline::~Spline()
@@ -28,6 +30,8 @@ Spline::~Spline()
 	vkDestroyBuffer(m_device->getDevice(), buffers.interpolatedPoints.buffer, nullptr);
 	for (auto buffer : m_uniformBuffers)
 		buffer.destroy();
+	buffers.controlPoints.destroy();
+	buffers.interpolatedPoints.destroy();
 }
 
 void Spline::init()
@@ -168,9 +172,9 @@ void Spline::init()
 	multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
 	DepthStencilState depthStencil{};
-	depthStencil.depthTestEnable = VK_FALSE;
-	depthStencil.depthWriteEnable = VK_FALSE;
-	depthStencil.depthCompareOp = VK_COMPARE_OP_NEVER;
+	depthStencil.depthTestEnable = VK_TRUE;
+	depthStencil.depthWriteEnable = VK_TRUE;
+	depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
 	depthStencil.depthBoundsTestEnable = VK_FALSE;
 	depthStencil.stencilTestEnable = VK_FALSE;
 	depthStencil.front = depthStencil.back;
@@ -242,7 +246,7 @@ glm::vec3 Spline::calculateBSpline(glm::mat4 matrix, float t)
 	bsplineMatrix[2] = glm::vec4(-3.0f, 0.0f, 3.0f, 0.0f);
 	bsplineMatrix[3] = glm::vec4(1.0f, 4.0f, 1.0f, 0.0f);
 
-	bsplineMatrix /= someFactor;
+	bsplineMatrix /= m_factor;
 	bsplineMatrix = glm::transpose(bsplineMatrix);
 
 	glm::vec4 pos = glm::vec4(t * t * t, t * t, t, 1.0f) * bsplineMatrix * matrix;
@@ -257,7 +261,7 @@ glm::vec3 Spline::calculateBSplineDerivative(glm::mat4 matrix, float t)
 	bsplineMatrix[2] = glm::vec4(-3.0f, 0.0f, 3.0f, 0.0f);
 	bsplineMatrix[3] = glm::vec4(1.0f, 4.0f, 1.0f, 0.0f);
 
-	bsplineMatrix /= someFactor;
+	bsplineMatrix /= m_factor;
 	bsplineMatrix = glm::transpose(bsplineMatrix);
 
 	glm::vec4 pos = glm::vec4(3 * t * t, 2 * t, 1.0, 0.0f) * bsplineMatrix * matrix;
@@ -266,30 +270,25 @@ glm::vec3 Spline::calculateBSplineDerivative(glm::mat4 matrix, float t)
 
 TableValue Spline::findInTable(float distance)
 {
-	for (unsigned int i = 0; i < m_arcTable.size() - 1; ++i)
-	{
-		float s, alpha;
-		float d1, d2;
+	for (unsigned int i = 0; i < m_arcTable.size() - 1; ++i) {
+		float point, alpha;
+		float dist1, dist2;
 		int curveIndex;
-		if ((m_arcTable[i].distance < distance) && (m_arcTable[i + 1].distance > distance))
-		{
-			// lerp between points
+		if ((m_arcTable[i].distance < distance) && (m_arcTable[i + 1].distance > distance)) {
 			alpha = (distance - m_arcTable[i].distance) / (m_arcTable[i + 1].distance - m_arcTable[i].distance);
-			if (m_arcTable[i].curveIndex != m_arcTable[i + 1].curveIndex)
-			{
-				d1 = 0.0f;
-				d2 = m_arcTable[i + 1].pointOnCurve;
-				s = glm::lerp(d1, d2, alpha);
+			if (m_arcTable[i].curveIndex != m_arcTable[i + 1].curveIndex) {
+				dist1 = 0.0f;
+				dist2 = m_arcTable[i + 1].pointOnCurve;
+				point = glm::lerp(dist1, dist2, alpha);
 				curveIndex = m_arcTable[i + 1].curveIndex;
 			}
-			else
-			{
-				d1 = m_arcTable[i + 1].pointOnCurve;
-				d2 = m_arcTable[i].pointOnCurve;
-				s = glm::lerp(d2, d1, alpha);
+			else {
+				dist1 = m_arcTable[i + 1].pointOnCurve;
+				dist2 = m_arcTable[i].pointOnCurve;
+				point = glm::lerp(dist2, dist1, alpha);
 				curveIndex = m_arcTable[i].curveIndex;
 			}
-			return TableValue(0.0f, s, curveIndex);
+			return TableValue(0.0f, point, curveIndex);
 		}
 	}
 	return TableValue(0.0f, 0.0f, 0);
@@ -300,24 +299,22 @@ void Spline::calculateAdaptiveTable(float& t1, float& t2, float& t3)
 	float tolerance = 0.1;
 	m_arcTable.emplace_back(TableValue(0.0f, 0.0f, 0));
 
-	for (unsigned int i = 0; i < m_controlPointsMatrices.size(); ++i)
-	{
-		std::stack<TableValue> tempValueStack;
-		tempValueStack.push(TableValue(0.0f, 1.0f, i));
+	for (unsigned int i = 0; i < m_controlPointsMatrices.size(); ++i) {
+		std::stack<TableValue> valueStack;
+		valueStack.push(TableValue(0.0f, 1.0f, i));
 
-		while (tempValueStack.size() > 0)
-		{
-			TableValue stackTop = tempValueStack.top();
-			tempValueStack.pop();
+		while (valueStack.size() > 0) {
+			TableValue stackTop = valueStack.top();
+			valueStack.pop();
 
 			int curveIndex = stackTop.curveIndex;
 			float s_a = stackTop.distance;
 			float s_b = stackTop.pointOnCurve;
-			float s_m = (s_a + s_b) / 2.0f;
+			float s_mid = (s_a + s_b) / 2.0f;
 
 			glm::vec3 P_sa = calculateBSpline(m_controlPointsMatrices[curveIndex], s_a);
 			glm::vec3 P_sb = calculateBSpline(m_controlPointsMatrices[curveIndex], s_b);
-			glm::vec3 P_sm = calculateBSpline(m_controlPointsMatrices[curveIndex], s_m);
+			glm::vec3 P_sm = calculateBSpline(m_controlPointsMatrices[curveIndex], s_mid);
 
 			float A = glm::length(P_sm - P_sa);
 			float B = glm::length(P_sb - P_sm);
@@ -325,31 +322,18 @@ void Spline::calculateAdaptiveTable(float& t1, float& t2, float& t3)
 
 			float d = A + B - C;
 
-			if (d < tolerance)
-			{
+			if (d < tolerance) {
 				int previousLength = m_arcTable[(m_arcTable.size()) - 1].distance;
-
-				// add previous_lenght + A , and previous_length + A + B to arc Table
-				m_arcTable.emplace_back(TableValue(previousLength + A, s_m, curveIndex));
+				m_arcTable.emplace_back(TableValue(previousLength + A, s_mid, curveIndex));
 				m_arcTable.emplace_back(TableValue(previousLength + A + B, s_b, curveIndex));
 			}
-			// if d is greater then tolerance then we continue
-			else
-			{
-				tempValueStack.push(TableValue(s_m, s_b, curveIndex));
-				tempValueStack.push(TableValue(s_a, s_m, curveIndex));
+			else {
+				valueStack.push(TableValue(s_mid, s_b, curveIndex));
+				valueStack.push(TableValue(s_a, s_mid, curveIndex));
 			}
 		}
 	}
-
-	for (unsigned int i = 0; i < m_arcTable.size(); ++i)
-	{
-		std::cout << "distance: " << m_arcTable[i].distance << "\t"
-			<< "point on curve: " << m_arcTable[i].pointOnCurve << "\t" <<
-			"curveIndex: " << m_arcTable[i].curveIndex << std::endl;
-	}
-
-	t3 = m_arcTable[m_arcTable.size() - 1].distance / someFactor;
+	t3 = m_arcTable[m_arcTable.size() - 1].distance / m_factor;
 	t1 = 0.3f * t3;
 	t2 = 0.9f * t3;
 	t3 += (t1 + (t3 - t2));
