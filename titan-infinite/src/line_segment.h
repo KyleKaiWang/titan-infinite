@@ -92,6 +92,16 @@ public:
 			&vertices.buffer,
 			&vertices.memory);
 
+		// Copy from staging buffers
+		VkCommandBuffer copyCmd = m_device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+		VkBufferCopy copyRegion{};
+		copyRegion.size = vertice.size() * sizeof(glm::vec3);
+		vkCmdCopyBuffer(copyCmd, vertexStaging.buffer, vertices.buffer, 1, &copyRegion);
+		m_device->flushCommandBuffer(copyCmd, m_device->getGraphicsQueue());
+
+		vkDestroyBuffer(m_device->getDevice(), vertices.buffer, nullptr);
+		vkFreeMemory(m_device->getDevice(), vertices.memory, nullptr);
+
 		// Uniform Buffer
 		m_uniformBuffers.resize(m_device->getSwapChainimages().size());
 		for (auto& uniformBuffer : m_uniformBuffers) {
