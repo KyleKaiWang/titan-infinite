@@ -30,6 +30,7 @@ class Application {
 public:
     Application() {}
     ~Application() {
+        delete m_camera;
         delete m_device;
         m_window->destroy();
         delete m_window;
@@ -60,10 +61,8 @@ private:
     struct Pipelines
     {
         VkPipeline solid;
-        VkPipeline wireframe = VK_NULL_HANDLE;
+        VkPipeline enable_wireframe = VK_NULL_HANDLE;
     } pipelines;
-
-    bool wireframe = false;
 
     struct DescriptorSetLayouts
     {
@@ -89,15 +88,15 @@ private:
     std::vector<UniformBufferSet> uniformBuffers;
 
     struct shaderValuesParams {
-        glm::vec4 lightDir = glm::vec4(10.0f, 10.0f, 10.0f, 1.0f);
-        float exposure = 4.5f;
-        float gamma = 2.2f;
-        float prefilteredCubeMipLevels = 1.0f;
-        float scaleIBLAmbient = 1.0f;
-        float debugViewInputs = 0;
-        float debugViewEquation = 0;
-        float enableDebugBones = 0.0f;
-        glm::vec3 camPos = glm::vec3(10.0f, 10.0f, 10.0f);
+        glm::vec4 lightDir                  = glm::vec4(10.0f, 10.0f, 10.0f, 1.0f);
+        float exposure                      = 4.5f;
+        float gamma                         = 2.2f;
+        float prefilteredCubeMipLevels      = 1.0f;
+        float scaleIBLAmbient               = 1.0f;
+        float debugViewInputs               = 0;
+        float debugViewEquation             = 0;
+        float enableDebugBones              = 0.0f;
+        glm::vec3 camPos                    = glm::vec3(10.0f, 10.0f, 10.0f);
     } shaderValuesParams;
 
     enum PBRWorkflows { PBR_WORKFLOW_METALLIC_ROUGHNESS = 0, PBR_WORKFLOW_SPECULAR_GLOSINESS = 1 };
@@ -135,24 +134,21 @@ private:
     uint32_t lastFPS = 0;
     std::chrono::time_point<std::chrono::high_resolution_clock> lastTimestamp;
 
+    // Animation 
     int32_t animationIndex = 0;
     float animationTimer = 0.0f;
     float animationSpeed = 1.0f;
-    bool animate = false;
-    Gui* gui;
 
-    struct Transform
-    {
-        glm::vec3 position = glm::vec3(0.0f);
-        glm::vec3 rotation = glm::vec3(0.0f);
-        //glm::vec3 scale;
-    }model_transform;
-
+    // Inverse Kinematic
     struct IK
     {
         glm::vec3 target = glm::vec3(0.0f, 5.0f, 0.0f);
     }ccd_ik;
 
+    // Values show on UI
+    Gui* gui;
+    bool enable_wireframe = false;
+    bool enable_animate = false;
     bool enable_slerp = true;
     bool enable_debug_joints = false;
     bool enable_IK = false;
@@ -161,6 +157,7 @@ private:
     float moving_speed = 1.0f;
     float path_time = 0.0f;
 
+    // Spline
     Spline* spline;
     float t1, t2, t3, pathTime;
 
@@ -240,60 +237,29 @@ private:
     }
 
     void initSpline() {
-        spline->m_controlPoints.push_back(glm::vec3(0.0f, 0.0f, -6.3f));
-        spline->m_controlPoints.push_back(glm::vec3(0.0f, 0.0f, 0.0f));
-        spline->m_controlPoints.push_back(glm::vec3(0.0f, 0.0f, 6.3f));
-        spline->m_controlPoints.push_back(glm::vec3(0.0f, 0.0f, 12.6f));
-        spline->m_controlPoints.push_back(glm::vec3(6.0f, 0.0f, 16.0f));
+        spline->addControlPoint(glm::vec3(0.0f, 0.0f, -6.3f));
+        spline->addControlPoint(glm::vec3(0.0f, 0.0f, 0.0f));
+        spline->addControlPoint(glm::vec3(0.0f, 0.0f, 6.3f));
+        spline->addControlPoint(glm::vec3(0.0f, 0.0f, 12.6f));
+        spline->addControlPoint(glm::vec3(6.0f, 0.0f, 16.0f));
+        spline->addControlPoint(glm::vec3(6.0f, 0.0f, 16.0f));
+        spline->addControlPoint(glm::vec3(13.0f, 0.0f, 23.5f));
+        spline->addControlPoint(glm::vec3(19.5f, 0.0f, 23.5f));
+        spline->addControlPoint(glm::vec3(27.0f, 0.0f, 16.0f));
+        spline->addControlPoint(glm::vec3(0.0f, 0.0f, 6.3f));
 
-        spline->m_controlPoints.push_back(glm::vec3(6.0f, 0.0f, 16.0f));
-        spline->m_controlPoints.push_back(glm::vec3(13.0f, 0.0f, 23.5f));
-        spline->m_controlPoints.push_back(glm::vec3(19.5f, 0.0f, 23.5f));
-        spline->m_controlPoints.push_back(glm::vec3(27.0f, 0.0f, 16.0f));
-
-        //spline->m_controlPoints.push_back(glm::vec3(27.0f, 0.5f, 16.0f));
-        //spline->m_controlPoints.push_back(glm::vec3(33.0f, 0.5f, 11.5f));
-        //spline->m_controlPoints.push_back(glm::vec3(39.5f, 0.5f, 11.5f));
-        //spline->m_controlPoints.push_back(glm::vec3(46.0f, 0.5f, 13.7f));
-        //
-        //spline->m_controlPoints.push_back(glm::vec3(46.0f, 0.5f, 13.7f));
-        //spline->m_controlPoints.push_back(glm::vec3(53.0f, 0.5f, 16.5f));
-        //spline->m_controlPoints.push_back(glm::vec3(59.5f, 0.5f, 19.5f));
-        //spline->m_controlPoints.push_back(glm::vec3(65.0f, 0.5f, 16.0f));
-        
-        //spline->m_controlPoints.push_back(glm::vec3(65.0f, 0.5f, -16.0f));
-        //spline->m_controlPoints.push_back(glm::vec3(59.5f, 0.5f, -19.5f));
-        //spline->m_controlPoints.push_back(glm::vec3(53.0f, 0.5f, -16.5f));
-        //spline->m_controlPoints.push_back(glm::vec3(46.0f, 0.5f, -13.7f));
-        
-        //spline->m_controlPoints.push_back(glm::vec3(46.0f, 0.5f, -13.7f));
-        //spline->m_controlPoints.push_back(glm::vec3(39.5f, 0.5f, -11.5f));
-        //spline->m_controlPoints.push_back(glm::vec3(33.0f, 0.5f, -11.5f));
-        //spline->m_controlPoints.push_back(glm::vec3(27.0f, 0.5f, -16.0f));
-        
-        //spline->m_controlPoints.push_back(glm::vec3(27.0f, 0.0f, -16.0f));
-        //spline->m_controlPoints.push_back(glm::vec3(19.5f, 0.0f, -23.5f));
-        //spline->m_controlPoints.push_back(glm::vec3(13.0f, 0.0f, -23.5f));
-        //spline->m_controlPoints.push_back(glm::vec3(6.0f, 0.0f, -16.0f));
-        //
-        //spline->m_controlPoints.push_back(glm::vec3(6.0f, 0.0f, -16.0f));
-        //spline->m_controlPoints.push_back(glm::vec3(0.0f, 0.0f, -12.6f));
-        //spline->m_controlPoints.push_back(glm::vec3(0.0f, 0.0f, -6.3f));
-        //spline->m_controlPoints.push_back(glm::vec3(0.0f, 0.0f, 0.0f));
-        spline->m_controlPoints.push_back(glm::vec3(0.0f, 0.0f, 6.3f));
-
-        for (unsigned int i = 0; i < spline->m_controlPoints.size() - 3; ++i) {
-            glm::mat4 temp;
-            temp[0] = glm::vec4(spline->m_controlPoints[i], 1);
-            temp[1] = glm::vec4(spline->m_controlPoints[i + 1], 1);
-            temp[2] = glm::vec4(spline->m_controlPoints[i + 2], 1);
-            temp[3] = glm::vec4(spline->m_controlPoints[i + 3], 1);
-            spline->m_controlPointsMatrices.push_back(glm::transpose(temp));
+        for (size_t i = 0; i < spline->m_controlPoints.size() - 3; ++i) {
+            glm::mat4 matrix;
+            matrix[0] = glm::vec4(spline->m_controlPoints[i], 1);
+            matrix[1] = glm::vec4(spline->m_controlPoints[i + 1], 1);
+            matrix[2] = glm::vec4(spline->m_controlPoints[i + 2], 1);
+            matrix[3] = glm::vec4(spline->m_controlPoints[i + 3], 1);
+            spline->m_controlPointsMatrices.push_back(glm::transpose(matrix));
         }
 
-        for (unsigned int i = 0; i < spline->m_controlPointsMatrices.size(); ++i) {
+        for (size_t i = 0; i < spline->m_controlPointsMatrices.size(); ++i) {
             for (float j = 0.0f; j <= 1.0f; j += 0.0001f) {
-                spline->m_interpolatedPoints.push_back(spline->calculateBSpline(spline->m_controlPointsMatrices[i], j));
+                spline->addInterpolationPoint(spline->calculateBSpline(spline->m_controlPointsMatrices[i], j));
             }
         }
         
@@ -324,7 +290,6 @@ private:
             );
             memory::map(m_device->getDevice(), uniformBuffer.params.memory, 0, uniformBuffer.params.bufferSize, &uniformBuffer.params.mapped);
         }
-        //updateUniformBuffer();
     }
 
     void updateUniformBuffer() {
@@ -344,55 +309,48 @@ private:
         shaderValuesScene.model[1][1] = scale;
         shaderValuesScene.model[2][2] = scale;
         //shaderValuesScene.model = glm::translate(shaderValuesScene.model, translate);
-        //if (animate && enable_moving_path) {
-            float distance;
         
-            if (pathTime <= t1) {
-                animationSpeed = pathTime * (moving_speed / t1);
-                distance = (pathTime * pathTime * 0.5f) * (moving_speed / t1);
-            }
-            else if (pathTime > t1 && pathTime <= t2) {
-                animationSpeed = moving_speed;
-                distance = (moving_speed * t1 * 0.5f) + moving_speed * (pathTime - t1);
-            }
-            else if (pathTime > t2 && pathTime <= t3) {
-                animationSpeed = (t3 - pathTime) * (moving_speed / (t3 - t2));
-                distance = (((moving_speed * t1) / 2.0f) + moving_speed * (t2 - t1)) + (moving_speed - (moving_speed * (pathTime - t2) / (t3 - t2)) * 0.5f) * (pathTime - t2);
-            }
-            else {
-                distance = 0.0f;
-                pathTime = 0.0f;
-                animationSpeed = 0.0f;
-            }
+        float distance = 0.0f;
+        if (pathTime <= t1) {
+            animationSpeed = pathTime * (moving_speed / t1);
+            distance = (pathTime * pathTime * 0.5f) * (moving_speed / t1);
+        }
+        else if (pathTime > t1 && pathTime <= t2) {
+            animationSpeed = moving_speed;
+            distance = (moving_speed * t1 * 0.5f) + moving_speed * (pathTime - t1);
+        }
+        else if (pathTime > t2 && pathTime <= t3) {
+            animationSpeed = (t3 - pathTime) * (moving_speed / (t3 - t2));
+            distance = (((moving_speed * t1) / 2.0f) + moving_speed * (t2 - t1)) + (moving_speed - (moving_speed * (pathTime - t2) / (t3 - t2)) * 0.5f) * (pathTime - t2);
+        }
+        else {
+            distance = 0.0f;
+            pathTime = 0.0f;
+            animationSpeed = 0.0f;
+        }
         
-            TableValue tableValue = spline->findInTable(distance);
-            glm::vec3 curveVertex = spline->calculateBSpline(spline->m_controlPointsMatrices[tableValue.curveIndex], tableValue.pointOnCurve);
-            glm::vec3 position = curveVertex;
-            glm::mat4 pathModelMatrix = glm::translate(glm::mat4(1.0f), position);
+        TableValue tableValue = spline->findInTable(distance);
+        glm::vec3 curveVertex = spline->calculateBSpline(spline->m_controlPointsMatrices[tableValue.curveIndex], tableValue.pointOnCurve);
+        glm::vec3 position = curveVertex;
+        glm::mat4 pathModelMatrix = glm::translate(glm::mat4(1.0f), position);
+        {
+            glm::vec3 V = spline->calculateBSplineDerivative(spline->m_controlPointsMatrices[tableValue.curveIndex], tableValue.pointOnCurve);
+            V = glm::normalize(V);
+            glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+            glm::vec3 W = glm::normalize(glm::cross(up, V));
+            glm::vec3 U = glm::normalize(glm::cross(V, W));
         
-            // orientation
-            {
-                glm::vec3 curveVertex1 = spline->calculateBSplineDerivative(spline->m_controlPointsMatrices[tableValue.curveIndex], tableValue.pointOnCurve);
-                glm::vec3 V = curveVertex1;
-                V = glm::normalize(V);
-                glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
-                //glm::vec3 up = m_camera->up;
-                glm::vec3 W = glm::normalize(glm::cross(up, V));
-                glm::vec3 U = glm::normalize(glm::cross(V, W));
+            glm::mat4 rotation;
+            rotation[0] = glm::vec4(W, 0.0f);
+            rotation[1] = glm::vec4(U, 0.0f);
+            rotation[2] = glm::vec4(V, 0.0f);
+            rotation[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
         
-                glm::mat4 rotation;
-                rotation[0] = glm::vec4(W, 0.0f);
-                rotation[1] = glm::vec4(U, 0.0f);
-                rotation[2] = glm::vec4(V, 0.0f);
-                rotation[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
-        
-                pathModelMatrix *= rotation;
-            }
-            //float curveSpeed = (animationSpeed / moving_speed);
-            animationSpeed /= moving_speed;
-            glm::mat4 modelMatrix = shaderValuesScene.model;
-            shaderValuesScene.model = pathModelMatrix * modelMatrix;
-        //}     
+            pathModelMatrix *= rotation;
+        }
+        animationSpeed /= moving_speed;
+        glm::mat4 modelMatrix = shaderValuesScene.model;
+        shaderValuesScene.model = pathModelMatrix * modelMatrix;
     }
     void updateDebugUniformBuffer(glm::mat4 model) {
         shaderValuesDebug.projection = m_camera->matrices.perspective;
@@ -406,7 +364,6 @@ private:
         uint32_t imageSamplerCount = 0;
         uint32_t materialCount = 0;
         uint32_t meshCount = 0;
-
 
         std::vector<vkglTF::VulkanglTFModel*> modellist = { &meshModel, &cubeModel };
         for (auto& model : modellist) {
@@ -683,10 +640,10 @@ private:
         pipelines.solid = m_device->createGraphicsPipeline(m_device->getDevice(), m_device->getPipelineCache(), shaderStages_mesh, vertexInputState, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_device->getRenderPass());
 
         // Wire frame rendering pipeline
-        //if (wireframe) {
+        //if (enable_wireframe) {
             rasterizer.polygonMode = VK_POLYGON_MODE_LINE;
             rasterizer.lineWidth = 1.0f;
-            pipelines.wireframe = m_device->createGraphicsPipeline(m_device->getDevice(), m_device->getPipelineCache(), shaderStages_mesh, vertexInputState, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_device->getRenderPass());
+            pipelines.enable_wireframe = m_device->createGraphicsPipeline(m_device->getDevice(), m_device->getPipelineCache(), shaderStages_mesh, vertexInputState, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_device->getRenderPass());
         //}
         for (auto shaderStage : shaderStages_mesh)
             vkDestroyShaderModule(m_device->getDevice(), shaderStage.module, nullptr);
@@ -738,7 +695,7 @@ private:
             vkCmdSetScissor(currentCB, 0, 1, &scissor);
 
             // Model
-            vkCmdBindPipeline(currentCB, VK_PIPELINE_BIND_POINT_GRAPHICS, wireframe ? pipelines.wireframe : pipelines.solid);
+            vkCmdBindPipeline(currentCB, VK_PIPELINE_BIND_POINT_GRAPHICS, enable_wireframe ? pipelines.enable_wireframe : pipelines.solid);
             vkCmdBindVertexBuffers(currentCB, 0, 1, &meshModel.vertices.buffer, offsets);
             if (meshModel.indices.count > 0) {
                 vkCmdBindIndexBuffer(currentCB, meshModel.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
@@ -922,7 +879,7 @@ private:
         frameTimer = (float)tDiff / 1000.0f;
         m_camera->update(frameTimer);
 
-        if(animate)
+        if(enable_animate)
             pathTime += frameTimer;
        float fpsTimer = (float)(std::chrono::duration<double, std::milli>(tEnd - lastTimestamp).count());
        if (fpsTimer > 1000.0f)
@@ -996,7 +953,6 @@ private:
 
         if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || m_window->getFramebufferResized()) {
             m_window->setFramebufferResized(false);
-            //recreateSwapChain();
         }
         else if (result != VK_SUCCESS) {
             throw std::runtime_error("failed to present swap chain image!");
@@ -1004,7 +960,7 @@ private:
         m_device->m_currentFrame = (m_device->m_currentFrame + 1) % 2;
         
         // Update Animation
-        if ((animate) && (meshModel.animations.size() > 0)) {
+        if ((enable_animate) && (meshModel.animations.size() > 0)) {
             animationTimer += frameTimer * animationSpeed;
             if (animationTimer > meshModel.animations[animationIndex].end) {
                 animationTimer -= meshModel.animations[animationIndex].end;
@@ -1046,7 +1002,7 @@ private:
             vkDestroyBuffer(m_device->getDevice(), ubo.debug.buffer, nullptr);
         }
         vkDestroyPipeline(m_device->getDevice(), pipelines.solid, nullptr);
-        vkDestroyPipeline(m_device->getDevice(), pipelines.wireframe, nullptr);
+        vkDestroyPipeline(m_device->getDevice(), pipelines.enable_wireframe, nullptr);
         vkDestroyPipelineLayout(m_device->getDevice(), m_pipelineLayout, nullptr);
     }
 
@@ -1054,8 +1010,8 @@ private:
         ImGui::Begin("Scene Settings");
         ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
         ImGui::Text("Frame Time", frameTimer);
-        ImGui::Checkbox("Enable Animation Update", &animate);
-        if(animate) {
+        ImGui::Checkbox("Enable Animation Update", &enable_animate);
+        if(enable_animate) {
             ImGui::Checkbox("Enable slerp", &enable_slerp);
             ImGui::SliderFloat("Moving Speed", &moving_speed, 1.0f, 10.0f);
             ImGui::Checkbox("Enable IK", &enable_IK);
@@ -1063,7 +1019,7 @@ private:
                 ImGui::SliderFloat3("IK Target", glm::value_ptr(ccd_ik.target), -100.0f, 100.0f);
             }
         }
-        ImGui::Checkbox("Show Wireframe", &wireframe);
+        ImGui::Checkbox("Show Wireframe", &enable_wireframe);
         ImGui::Checkbox("Enable Debug Joints", &enable_debug_joints);
         ImGui::Checkbox("Enable Debug Spline", &enable_debug_spline);
         ImGui::End();

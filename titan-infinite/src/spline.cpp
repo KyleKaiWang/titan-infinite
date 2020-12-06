@@ -15,10 +15,10 @@
 #include <glm/gtc/type_ptr.hpp>
 
 Spline::Spline(Device* device)
-	: m_device(device), m_lineWidth(10.0f), m_factor(6.0f), m_descriptorSetLayout(VK_NULL_HANDLE), m_pipelineLayout(VK_NULL_HANDLE), m_pipeline(VK_NULL_HANDLE)
+	: m_device(device), m_lineWidth(10.0f), m_factor(6.0f), m_splineColor(glm::vec4(0.0f, 1.0f, 0.0f, 1.0f)), m_descriptorSetLayout(VK_NULL_HANDLE), m_pipelineLayout(VK_NULL_HANDLE), m_pipeline(VK_NULL_HANDLE)
 {
 	ubo.mvp = glm::mat4(1.0f);
-	ubo.color = glm::vec4(0.0f, 1.0f, 0.0f, 1.0f);
+	ubo.color = m_splineColor;
 }
 
 Spline::~Spline()
@@ -215,9 +215,14 @@ void Spline::init()
 	initialized = true;
 }
 
-void Spline::addPoints(glm::vec3 pos, bool updateSpline)
+void Spline::addControlPoint(glm::vec3 pos)
 {
+	m_controlPoints.push_back(pos);
+}
 
+void Spline::addInterpolationPoint(glm::vec3 pos)
+{
+	m_interpolatedPoints.push_back(pos);
 }
 
 void Spline::drawSpline(VkCommandBuffer commandBuffer)
@@ -341,7 +346,7 @@ void Spline::calculateAdaptiveTable(float& t1, float& t2, float& t3)
 
 void Spline::updateUniformBuffer(Camera* camera, glm::mat4 model) {
 	ubo.mvp = camera->matrices.perspective * camera->matrices.view * model;
-	ubo.color = glm::vec4(0.0, 1.0, 0.0, 1.0);
+	ubo.color = m_splineColor;
 
 	auto imageIndex = m_device->getCurrentFrame();
 	memcpy(m_uniformBuffers[imageIndex].mapped, &ubo, sizeof(ubo));

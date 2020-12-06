@@ -24,7 +24,8 @@ public:
 
 	void init();
 
-	void addPoints(glm::vec3 pos, bool updateSpline = true);
+	void addControlPoint(glm::vec3 pos);
+	void addInterpolationPoint(glm::vec3 pos);
 	void drawSpline(VkCommandBuffer commandBuffer);
 	void drawControlPoints(VkCommandBuffer commandBuffer);
 	glm::vec3 calculateBSpline(glm::mat4 matrix, float t);
@@ -51,6 +52,7 @@ private:
 
 	std::vector<TableValue> m_arcTable;
 	float m_factor;
+	glm::vec4 m_splineColor;
 
 public:
 	std::vector<glm::vec3> m_controlPoints;
