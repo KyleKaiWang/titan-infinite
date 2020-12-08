@@ -154,7 +154,7 @@ private:
     bool enable_IK = false;
     bool enable_debug_spline = true;
     bool enable_moving_path = true;
-    float moving_speed = 1.0f;
+    float moving_speed = 6.0f;
     float path_time = 0.0f;
 
     // Spline
@@ -239,14 +239,14 @@ private:
     void initSpline() {
         spline->addControlPoint(glm::vec3(0.0f, 0.0f, -6.3f));
         spline->addControlPoint(glm::vec3(0.0f, 0.0f, 0.0f));
-        spline->addControlPoint(glm::vec3(0.0f, 0.0f, 6.3f));
-        spline->addControlPoint(glm::vec3(0.0f, 0.0f, 12.6f));
-        spline->addControlPoint(glm::vec3(6.0f, 0.0f, 16.0f));
-        spline->addControlPoint(glm::vec3(6.0f, 0.0f, 16.0f));
-        spline->addControlPoint(glm::vec3(13.0f, 0.0f, 23.5f));
-        spline->addControlPoint(glm::vec3(19.5f, 0.0f, 23.5f));
-        spline->addControlPoint(glm::vec3(27.0f, 0.0f, 16.0f));
-        spline->addControlPoint(glm::vec3(0.0f, 0.0f, 6.3f));
+        spline->addControlPoint(glm::vec3(0.0f, 0.0f, 1.3f));
+        spline->addControlPoint(glm::vec3(0.0f, 0.0f, 2.6f));
+        spline->addControlPoint(glm::vec3(1.0f, 0.0f, 3.0f));
+
+        spline->addControlPoint(glm::vec3(1.0f, 0.0f, 3.0f));
+        spline->addControlPoint(glm::vec3(1.5f, 0.0f, -1.0f));
+        spline->addControlPoint(glm::vec3(1.5f, 0.0f, -3.5f));
+        spline->addControlPoint(glm::vec3(0.0f, 0.0f, -5.5f));
 
         for (size_t i = 0; i < spline->m_controlPoints.size() - 3; ++i) {
             glm::mat4 matrix;
@@ -330,8 +330,7 @@ private:
         }
         
         TableValue tableValue = spline->findInTable(distance);
-        glm::vec3 curveVertex = spline->calculateBSpline(spline->m_controlPointsMatrices[tableValue.curveIndex], tableValue.pointOnCurve);
-        glm::vec3 position = curveVertex;
+        glm::vec3 position = spline->calculateBSpline(spline->m_controlPointsMatrices[tableValue.curveIndex], tableValue.pointOnCurve);
         glm::mat4 pathModelMatrix = glm::translate(glm::mat4(1.0f), position);
         {
             glm::vec3 V = spline->calculateBSplineDerivative(spline->m_controlPointsMatrices[tableValue.curveIndex], tableValue.pointOnCurve);
