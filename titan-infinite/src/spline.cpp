@@ -15,7 +15,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 Spline::Spline(Device* device)
-	: m_device(device), m_lineWidth(10.0f), m_factor(6.0f), m_splineColor(glm::vec4(0.0f, 1.0f, 0.0f, 1.0f)), m_descriptorSetLayout(VK_NULL_HANDLE), m_pipelineLayout(VK_NULL_HANDLE), m_pipeline(VK_NULL_HANDLE)
+	: m_device(device), m_lineWidth(10.0f), m_factor(6.0f), m_splineColor(glm::vec4(0.0f, 1.0f, 0.0f, 1.0f)), m_controlPointSize(10.0f), m_descriptorSetLayout(VK_NULL_HANDLE), m_pipelineLayout(VK_NULL_HANDLE), m_pipeline(VK_NULL_HANDLE)
 {
 	ubo.mvp = glm::mat4(1.0f);
 	ubo.color = m_splineColor;
@@ -220,6 +220,11 @@ void Spline::addControlPoint(glm::vec3 pos)
 	m_controlPoints.push_back(pos);
 }
 
+void Spline::addControlPointMatrix(glm::mat4 mat)
+{
+	m_controlPointsMatrices.push_back(mat);
+}
+
 void Spline::addInterpolationPoint(glm::vec3 pos)
 {
 	m_interpolatedPoints.push_back(pos);
@@ -245,6 +250,7 @@ void Spline::drawControlPoints(VkCommandBuffer commandBuffer)
 
 glm::vec3 Spline::calculateBSpline(glm::mat4 matrix, float t)
 {
+	// Uniform B-Spline
 	glm::mat4 bsplineMatrix;
 	bsplineMatrix[0] = glm::vec4(-1.0f, 3.0f, -3.0f, 1.0f);
 	bsplineMatrix[1] = glm::vec4(3.0f, -6.0f, 3.0f, 0.0f);
@@ -305,12 +311,12 @@ void Spline::calculateAdaptiveTable(float& t1, float& t2, float& t3)
 	m_arcTable.emplace_back(TableValue(0.0f, 0.0f, 0));
 
 	for (unsigned int i = 0; i < m_controlPointsMatrices.size(); ++i) {
-		std::stack<TableValue> valueStack;
-		valueStack.push(TableValue(0.0f, 1.0f, i));
+		std::stack<TableValue> segmentStack;
+		segmentStack.push(TableValue(0.0f, 1.0f, i));
 
-		while (valueStack.size() > 0) {
-			TableValue stackTop = valueStack.top();
-			valueStack.pop();
+		while (segmentStack.size() > 0) {
+			TableValue stackTop = segmentStack.top();
+			segmentStack.pop();
 
 			int curveIndex = stackTop.curveIndex;
 			float s_a = stackTop.distance;
@@ -333,8 +339,8 @@ void Spline::calculateAdaptiveTable(float& t1, float& t2, float& t3)
 				m_arcTable.emplace_back(TableValue(previousLength + A + B, s_b, curveIndex));
 			}
 			else {
-				valueStack.push(TableValue(s_mid, s_b, curveIndex));
-				valueStack.push(TableValue(s_a, s_mid, curveIndex));
+				segmentStack.push(TableValue(s_mid, s_b, curveIndex));
+				segmentStack.push(TableValue(s_a, s_mid, curveIndex));
 			}
 		}
 	}
@@ -344,9 +350,10 @@ void Spline::calculateAdaptiveTable(float& t1, float& t2, float& t3)
 	t3 += (t1 + (t3 - t2));
 }
 
-void Spline::updateUniformBuffer(Camera* camera, glm::mat4 model) {
+void Spline::updateUniformBuffer(Camera* camera, glm::mat4 model, bool controlPoint) {
 	ubo.mvp = camera->matrices.perspective * camera->matrices.view * model;
 	ubo.color = m_splineColor;
+	ubo.controlPoint = controlPoint;
 
 	auto imageIndex = m_device->getCurrentFrame();
 	memcpy(m_uniformBuffers[imageIndex].mapped, &ubo, sizeof(ubo));

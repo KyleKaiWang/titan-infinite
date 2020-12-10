@@ -129,7 +129,7 @@ private:
     };
 
     // Mesuring frame time
-    float frameTimer = 1.0f;
+    float frameTimer = 0.0f;
     uint32_t frameCounter = 0;
     uint32_t lastFPS = 0;
     std::chrono::time_point<std::chrono::high_resolution_clock> lastTimestamp;
@@ -153,13 +153,14 @@ private:
     bool enable_debug_joints = false;
     bool enable_IK = false;
     bool enable_debug_spline = true;
+    bool enable_debug_control_points = true;
     bool enable_moving_path = true;
-    float moving_speed = 6.0f;
-    float path_time = 0.0f;
-
+    float velocity = 1.0f;
+    
     // Spline
     Spline* spline;
-    float t1, t2, t3, pathTime;
+    float _t1, _t2, _t3, pathTime;
+    float distance = 0.0f;
 
     void initResource() 
     {
@@ -198,10 +199,10 @@ private:
         meshModel.debug_line_segment->init();
 
         // Splines
-        t1 = t2 = t3 = pathTime = 0.0f;
+        _t1 = _t2 = _t3 = pathTime = 0.0f;
         spline = new Spline(m_device);
         initSpline();
-        spline->calculateAdaptiveTable(t1, t2, t3);
+        spline->calculateAdaptiveTable(_t1, _t2, _t3);
         spline->init();
 
         initDescriptorSetLayout();
@@ -239,14 +240,17 @@ private:
     void initSpline() {
         spline->addControlPoint(glm::vec3(0.0f, 0.0f, -6.3f));
         spline->addControlPoint(glm::vec3(0.0f, 0.0f, 0.0f));
-        spline->addControlPoint(glm::vec3(0.0f, 0.0f, 1.3f));
-        spline->addControlPoint(glm::vec3(0.0f, 0.0f, 2.6f));
-        spline->addControlPoint(glm::vec3(1.0f, 0.0f, 3.0f));
+        spline->addControlPoint(glm::vec3(0.0f, 0.0f, 1.0f));
+        spline->addControlPoint(glm::vec3(2.0f, 0.0f, 3.0f));
 
-        spline->addControlPoint(glm::vec3(1.0f, 0.0f, 3.0f));
-        spline->addControlPoint(glm::vec3(1.5f, 0.0f, -1.0f));
-        spline->addControlPoint(glm::vec3(1.5f, 0.0f, -3.5f));
-        spline->addControlPoint(glm::vec3(0.0f, 0.0f, -5.5f));
+        spline->addControlPoint(glm::vec3(4.0f, 0.0f, 2.0f));
+        spline->addControlPoint(glm::vec3(6.0f, 0.0f, -3.5f));        
+        spline->addControlPoint(glm::vec3(4.0f, 0.0f, -5.5f));
+        spline->addControlPoint(glm::vec3(2.0f, 0.0f, -5.8f));
+
+        spline->addControlPoint(glm::vec3(0.0f, 0.0f, -6.0f));
+        
+        
 
         for (size_t i = 0; i < spline->m_controlPoints.size() - 3; ++i) {
             glm::mat4 matrix;
@@ -254,12 +258,13 @@ private:
             matrix[1] = glm::vec4(spline->m_controlPoints[i + 1], 1);
             matrix[2] = glm::vec4(spline->m_controlPoints[i + 2], 1);
             matrix[3] = glm::vec4(spline->m_controlPoints[i + 3], 1);
-            spline->m_controlPointsMatrices.push_back(glm::transpose(matrix));
+            spline->addControlPointMatrix(glm::transpose(matrix));
         }
 
         for (size_t i = 0; i < spline->m_controlPointsMatrices.size(); ++i) {
             for (float j = 0.0f; j <= 1.0f; j += 0.0001f) {
-                spline->addInterpolationPoint(spline->calculateBSpline(spline->m_controlPointsMatrices[i], j));
+                glm::vec3 point = spline->calculateBSpline(spline->m_controlPointsMatrices[i], j);
+                spline->addInterpolationPoint(point);
             }
         }
         
@@ -292,6 +297,12 @@ private:
         }
     }
 
+    float ParametricBlend(float t)
+    {
+        float sqt = t * t;
+        return sqt / (2.0f * (sqt - t) + 1.0f);
+    }
+
     void updateUniformBuffer() {
 
         // Scene
@@ -310,24 +321,39 @@ private:
         shaderValuesScene.model[2][2] = scale;
         //shaderValuesScene.model = glm::translate(shaderValuesScene.model, translate);
         
-        float distance = 0.0f;
-        if (pathTime <= t1) {
-            animationSpeed = pathTime * (moving_speed / t1);
-            distance = (pathTime * pathTime * 0.5f) * (moving_speed / t1);
+        float t1 = _t1 * 6 / velocity;
+        float t2 = _t2 * 6 / velocity;
+        float t3 = _t3 * 6 / velocity;
+        float t = pathTime;
+        float v = velocity;
+        if (t <= t1) {
+            animationSpeed = t * (v / t1);
+            distance = (t * t * 0.5f) * (v / t1);
         }
-        else if (pathTime > t1 && pathTime <= t2) {
-            animationSpeed = moving_speed;
-            distance = (moving_speed * t1 * 0.5f) + moving_speed * (pathTime - t1);
+        else if (pathTime > t1 && t <= t2) {
+            animationSpeed = v;
+            distance = (v * t1 * 0.5f) + v * (t - t1);
+            //distance = velocity * (pathTime - t1) + (pathTime * pathTime * 0.5f) * (velocity / t1);
         }
-        else if (pathTime > t2 && pathTime <= t3) {
-            animationSpeed = (t3 - pathTime) * (moving_speed / (t3 - t2));
-            distance = (((moving_speed * t1) / 2.0f) + moving_speed * (t2 - t1)) + (moving_speed - (moving_speed * (pathTime - t2) / (t3 - t2)) * 0.5f) * (pathTime - t2);
+        else if (t > t2 && t <= t3) {
+            animationSpeed = (t3 - t) * (v / (t3 - t2));
+            distance = (((v * t1) * 0.5f) + v * (t2 - t1)) + (v - (v * (t - t2) / (t3 - t2)) * 0.5f) * (t - t2);
+            //float t = pathTime;
+            //float v = (t3 - t) * velocity * (1 / (t3 - t2));
+            //distance =
+            //    (t * t1 * 0.5f) + t * (t - t1) +
+            //    v * (2 * t3 * t - t * t - 2 * t3 * t2 + t2 * t2) / 2 * (t3 - t2);
+
+            //distance = velocity * 0.5 * 1 / (t3 - t2) * (2 * t3 * pathTime - pathTime * pathTime - 2 * t3 * t2 + t2 * t2) 
+            //    + velocity * (pathTime - t1);
         }
         else {
             distance = 0.0f;
-            pathTime = 0.0f;
+            t = 0.0f;
             animationSpeed = 0.0f;
         }
+        pathTime = t;
+        velocity = v;
         
         TableValue tableValue = spline->findInTable(distance);
         glm::vec3 position = spline->calculateBSpline(spline->m_controlPointsMatrices[tableValue.curveIndex], tableValue.pointOnCurve);
@@ -347,7 +373,7 @@ private:
         
             pathModelMatrix *= rotation;
         }
-        animationSpeed /= moving_speed;
+        animationSpeed /= velocity;
         glm::mat4 modelMatrix = shaderValuesScene.model;
         shaderValuesScene.model = pathModelMatrix * modelMatrix;
     }
@@ -706,8 +732,13 @@ private:
             }
 
             // Draw Spline
+            spline->updateUniformBuffer(m_camera, glm::mat4(1.0f), false);
             if (enable_debug_spline)
                 spline->drawSpline(currentCB);
+
+            spline->updateUniformBuffer(m_camera, glm::mat4(1.0f), true);
+            if (enable_debug_control_points)
+                spline->drawControlPoints(currentCB);
 
             // Draw Joints
             if(enable_debug_joints)
@@ -934,7 +965,7 @@ private:
         meshModel.debug_line_segment->updateUniformBuffer(m_camera, shaderValuesScene.model);
         
         // Spline
-        spline->updateUniformBuffer(m_camera, glm::mat4(1.0f));
+        //spline->updateUniformBuffer(m_camera, glm::mat4(1.0f));
         
         m_device->submitCommandBuffer(m_device->getGraphicsQueue(), &submitInfo, m_device->waitFences[m_device->getCurrentFrame()]);
 
@@ -1008,11 +1039,11 @@ private:
     void updateGUI() {
         ImGui::Begin("Scene Settings");
         ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-        ImGui::Text("Frame Time", frameTimer);
+        ImGui::Text("Frame Time %.2f", frameTimer);
         ImGui::Checkbox("Enable Animation Update", &enable_animate);
         if(enable_animate) {
             ImGui::Checkbox("Enable slerp", &enable_slerp);
-            ImGui::SliderFloat("Moving Speed", &moving_speed, 1.0f, 10.0f);
+            ImGui::SliderFloat("Animation Speed", &velocity, 0.1f, 10.0f);
             ImGui::Checkbox("Enable IK", &enable_IK);
             if (enable_IK) {
                 ImGui::SliderFloat3("IK Target", glm::value_ptr(ccd_ik.target), -100.0f, 100.0f);
@@ -1021,6 +1052,8 @@ private:
         ImGui::Checkbox("Show Wireframe", &enable_wireframe);
         ImGui::Checkbox("Enable Debug Joints", &enable_debug_joints);
         ImGui::Checkbox("Enable Debug Spline", &enable_debug_spline);
+        ImGui::Checkbox("Enable Debug Control Points", &enable_debug_control_points);
+        
         ImGui::End();
     }
 

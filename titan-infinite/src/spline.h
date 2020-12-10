@@ -25,6 +25,7 @@ public:
 	void init();
 
 	void addControlPoint(glm::vec3 pos);
+	void addControlPointMatrix(glm::mat4 mat);
 	void addInterpolationPoint(glm::vec3 pos);
 	void drawSpline(VkCommandBuffer commandBuffer);
 	void drawControlPoints(VkCommandBuffer commandBuffer);
@@ -32,8 +33,8 @@ public:
 	glm::vec3 calculateBSplineDerivative(glm::mat4 matrix, float t);
 	TableValue findInTable(float distance);
 	void calculateAdaptiveTable(float& t1, float& t2, float& t3);
-	void updateUniformBuffer(Camera* camera, glm::mat4 model = glm::mat4(1.0));
-
+	void updateUniformBuffer(Camera* camera, glm::mat4 model = glm::mat4(1.0), bool controlPoint = false);
+	
 private:
 	Device* m_device;
 	float m_lineWidth;
@@ -42,6 +43,7 @@ private:
 	struct UBO {
 		glm::mat4 mvp;
 		glm::vec4 color;
+		bool controlPoint;
 	}ubo;
 
 	std::vector<Buffer> m_uniformBuffers;
@@ -53,6 +55,7 @@ private:
 	std::vector<TableValue> m_arcTable;
 	float m_factor;
 	glm::vec4 m_splineColor;
+	float m_controlPointSize;
 
 public:
 	std::vector<glm::vec3> m_controlPoints;
