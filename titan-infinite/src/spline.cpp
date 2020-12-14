@@ -15,7 +15,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 Spline::Spline(Device* device)
-	: m_device(device), m_lineWidth(10.0f), m_factor(6.0f), m_splineColor(glm::vec4(0.0f, 1.0f, 0.0f, 1.0f)), m_controlPointSize(10.0f), m_descriptorSetLayout(VK_NULL_HANDLE), m_pipelineLayout(VK_NULL_HANDLE), m_pipeline(VK_NULL_HANDLE)
+	: m_device(device), m_lineWidth(10.0f), m_splineColor(glm::vec4(0.0f, 1.0f, 0.0f, 1.0f)), m_controlPointSize(10.0f), m_descriptorSetLayout(VK_NULL_HANDLE), m_pipelineLayout(VK_NULL_HANDLE), m_pipeline(VK_NULL_HANDLE)
 {
 	ubo.mvp = glm::mat4(1.0f);
 	ubo.color = m_splineColor;
@@ -257,7 +257,7 @@ glm::vec3 Spline::calculateBSpline(glm::mat4 matrix, float t)
 	bsplineMatrix[2] = glm::vec4(-3.0f, 0.0f, 3.0f, 0.0f);
 	bsplineMatrix[3] = glm::vec4(1.0f, 4.0f, 1.0f, 0.0f);
 
-	bsplineMatrix /= m_factor;
+	bsplineMatrix /= 6;
 	bsplineMatrix = glm::transpose(bsplineMatrix);
 
 	glm::vec4 pos = glm::vec4(t * t * t, t * t, t, 1.0f) * bsplineMatrix * matrix;
@@ -272,7 +272,7 @@ glm::vec3 Spline::calculateBSplineDerivative(glm::mat4 matrix, float t)
 	bsplineMatrix[2] = glm::vec4(-3.0f, 0.0f, 3.0f, 0.0f);
 	bsplineMatrix[3] = glm::vec4(1.0f, 4.0f, 1.0f, 0.0f);
 
-	bsplineMatrix /= m_factor;
+	bsplineMatrix /= 6;
 	bsplineMatrix = glm::transpose(bsplineMatrix);
 
 	glm::vec4 pos = glm::vec4(3 * t * t, 2 * t, 1.0, 0.0f) * bsplineMatrix * matrix;
@@ -299,7 +299,7 @@ TableValue Spline::findInTable(float distance)
 				point = glm::lerp(dist2, dist1, alpha);
 				curveIndex = m_arcTable[i].curveIndex;
 			}
-			return TableValue(0.0f, point, curveIndex);
+			return TableValue(m_arcTable[i].distance, point, curveIndex);
 		}
 	}
 	return TableValue(0.0f, 0.0f, 0);
@@ -308,6 +308,7 @@ TableValue Spline::findInTable(float distance)
 void Spline::calculateAdaptiveTable(float& t1, float& t2, float& t3)
 {
 	float tolerance = 0.1;
+	float alpha = 0.001f;
 	m_arcTable.emplace_back(TableValue(0.0f, 0.0f, 0));
 
 	for (unsigned int i = 0; i < m_controlPointsMatrices.size(); ++i) {
@@ -333,8 +334,8 @@ void Spline::calculateAdaptiveTable(float& t1, float& t2, float& t3)
 
 			float d = A + B - C;
 
-			if (d < tolerance) {
-				int previousLength = m_arcTable[(m_arcTable.size()) - 1].distance;
+			if (d < tolerance && s_b - s_a > alpha) {
+				int previousLength = m_arcTable[m_arcTable.size() - 1].distance;
 				m_arcTable.emplace_back(TableValue(previousLength + A, s_mid, curveIndex));
 				m_arcTable.emplace_back(TableValue(previousLength + A + B, s_b, curveIndex));
 			}
@@ -344,9 +345,10 @@ void Spline::calculateAdaptiveTable(float& t1, float& t2, float& t3)
 			}
 		}
 	}
-	t3 = m_arcTable[m_arcTable.size() - 1].distance / m_factor;
-	t1 = 0.3f * t3;
-	t2 = 0.9f * t3;
+
+	t3 = m_arcTable[m_arcTable.size() - 1].distance / 6;
+	t1 = 0.3f * t3; // ramp up
+	t2 = 0.9f * t3; // ramp down
 	t3 += (t1 + (t3 - t2));
 }
 

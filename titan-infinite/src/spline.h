@@ -53,7 +53,6 @@ private:
 	VkPipeline m_pipeline;
 
 	std::vector<TableValue> m_arcTable;
-	float m_factor;
 	glm::vec4 m_splineColor;
 	float m_controlPointSize;
 
