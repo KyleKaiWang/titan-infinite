@@ -16,11 +16,10 @@ public:
     VkDeviceMemory image_memory;
     VkImageLayout image_layout;
     VkDeviceSize buffer_size;
-    VkDescriptorImageInfo descriptor;
     VkFormat format{ VK_FORMAT_UNDEFINED };
+    VkDescriptorImageInfo getDescriptorImageInfo() { return { sampler, view, image_layout }; }
 
     bool is_hdr{false};
-    bool needs_staging{false};
 
     uint32_t width, height;
     uint32_t num_components{4};
@@ -34,7 +33,6 @@ public:
 public:
     int bytesPerPixel() const { return num_components * (is_hdr ? sizeof(float) : sizeof(unsigned char)); }
     int pitch() const { return width * bytesPerPixel(); }
-    void updateDescriptor();
     void destroy(const VkDevice& device);
 };
 
@@ -53,7 +51,6 @@ struct ImageMemoryBarrier
         barrier.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
         barrier.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
         texture.image_layout = newLayout;
-        texture.updateDescriptor();
     }
     operator VkImageMemoryBarrier() const { return barrier; }
     VkImageMemoryBarrier barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
@@ -153,5 +150,5 @@ namespace texture {
         TextureObject& texture,
         VkFormat format);
 
-    TextureObject load(const std::string& filename);
+    TextureObject loadTexture(const std::string& filename);
 }

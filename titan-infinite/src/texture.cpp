@@ -6,6 +6,7 @@
 
 #include "pch.h"
 #include "texture.h"
+#include <filesystem>
 #include <gli.hpp>
 
 namespace texture {
@@ -20,7 +21,7 @@ namespace texture {
         VkImageLayout imageLayout) {
 
         // Load data, width, height and num_components
-        TextureObject texObj = load(filename);
+        TextureObject texObj = loadTexture(filename);
         texObj.device = device;
         texObj.mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texObj.width, texObj.height)))) + 1;
         auto image_data_size = texObj.data.size();
@@ -189,26 +190,23 @@ namespace texture {
             VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
             VK_FALSE);
 
-        texObj.descriptor.imageLayout = texObj.image_layout;
-        texObj.descriptor.imageView = texObj.view;
-        texObj.descriptor.sampler = texObj.sampler;
-
         return texObj;
     }
 
-    TextureObject loadTextureCube(
+    TextureObject loadTextureCube_gli(
         const std::string& filename,
         VkFormat format,
         Device* device,
         VkImageUsageFlags imageUsageFlags,
-        VkImageLayout imageLayout) {
+        VkImageLayout imageLayout)
+    {
+        gli::texture_cube texCube(gli::load(filename));
+        assert(!texCube.empty());
+
         TextureObject texObj;
         uint32_t width, height, mip_levels;
         size_t cube_size;
 
-        gli::texture_cube texCube(gli::load(filename));
-        assert(!texCube.empty());
-        
         width = static_cast<uint32_t>(texCube.extent().x);
         height = static_cast<uint32_t>(texCube.extent().y);
         cube_size = texCube.size();
@@ -218,6 +216,7 @@ namespace texture {
         texObj.width = width;
         texObj.height = height;
         texObj.mipLevels = mip_levels;
+        texObj.device = device;
 
         VkFormatProperties formatProps;
         vkGetPhysicalDeviceFormatProperties(device->getPhysicalDevice(), format, &formatProps);
@@ -354,8 +353,6 @@ namespace texture {
         );
 
         device->flushCommandBuffer(copyCmd, device->getGraphicsQueue());
-        vkFreeMemory(device->getDevice(), stage_buffer_memory, NULL);
-        vkDestroyBuffer(device->getDevice(), stage_buffer, NULL);
 
         texObj.view = device->createImageView(device->getDevice(),
             texObj.image,
@@ -381,11 +378,24 @@ namespace texture {
             VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
             VK_FALSE);
 
-        texObj.descriptor.imageLayout = texObj.image_layout;
-        texObj.descriptor.imageView = texObj.view;
-        texObj.descriptor.sampler = texObj.sampler;
-
+        vkFreeMemory(device->getDevice(), stage_buffer_memory, NULL);
+        vkDestroyBuffer(device->getDevice(), stage_buffer, NULL);
+        
         return texObj;
+    }
+
+    TextureObject loadTextureCube(
+        const std::string& filename,
+        VkFormat format,
+        Device* device,
+        VkImageUsageFlags imageUsageFlags,
+        VkImageLayout imageLayout) {
+
+        std::filesystem::path p(filename);
+        if (p.extension() == ".ktx")
+            return loadTextureCube_gli(filename, format, device, imageUsageFlags, imageLayout);
+        else
+            throw std::runtime_error("File type is not supported");
     }
 
     TextureObject loadTexture(
@@ -555,11 +565,6 @@ namespace texture {
             0.0,
             VK_BORDER_COLOR_INT_OPAQUE_BLACK,
             VK_FALSE);
-
-        // Update descriptor image info member that can be used for setting up descriptor sets
-        texObj.descriptor.imageLayout = texObj.image_layout;
-        texObj.descriptor.imageView = texObj.view;
-        texObj.descriptor.sampler = texObj.sampler;
 
         return texObj;
     }
@@ -875,7 +880,7 @@ namespace texture {
         }
     }
 
-    TextureObject load(const std::string& filename)
+    TextureObject loadTexture(const std::string& filename)
     {
         TextureObject texObj{};
         auto data = vkHelper::readFile(filename);
@@ -909,16 +914,8 @@ namespace texture {
         else if (extension == "ktx")
         {
         }
-
         return texObj;
     }
-}
-
-void TextureObject::updateDescriptor()
-{
-    descriptor.sampler = sampler;
-    descriptor.imageView = view;
-    descriptor.imageLayout = image_layout;
 }
 
 void TextureObject::destroy(const VkDevice& device)
