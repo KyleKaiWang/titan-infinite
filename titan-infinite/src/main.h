@@ -23,8 +23,7 @@
 #include <glm/gtx/euler_angles.hpp>
 #include <vulkan/vulkan.hpp>
 #include "gui.h"
-#include "line_segment.h"
-#include "spline.h"
+#include "skybox.h"
 
 class Application {
 public:
@@ -56,7 +55,7 @@ private:
 
     // glTF
     vkglTF::VulkanglTFModel meshModel;
-    vkglTF::VulkanglTFModel cubeModel;
+    //vkglTF::VulkanglTFModel cubeModel;
 
     struct Pipelines
     {
@@ -119,7 +118,7 @@ private:
     } pushConstBlockMaterial;
     
     TextureObject emptyTexture;
-    TextureObject checkerboardTexture;
+    //TextureObject textureCube;
     VkSampler m_defaultSampler;
 
     struct SpecularFilterPushConstants
@@ -134,17 +133,13 @@ private:
     uint32_t lastFPS = 0;
     std::chrono::time_point<std::chrono::high_resolution_clock> lastTimestamp;
 
+    //Skybox
+    Skybox m_skybox;
+
     // Animation 
     int32_t animationIndex = 0;
     float animationTimer = 0.0f;
     float animationSpeed = 1.0f;
-    float currAnimationSpeed = 1.0f;
-
-    // Inverse Kinematic
-    struct IK
-    {
-        glm::vec3 target = glm::vec3(0.0f, 5.0f, 0.0f);
-    }ccd_ik;
 
     // Values show on UI
     Gui* gui;
@@ -152,21 +147,6 @@ private:
     bool enable_animate = false;
     bool enable_slerp = true;
     bool enable_debug_joints = false;
-    bool enable_IK = false;
-    bool enable_debug_spline = true;
-    bool enable_debug_control_points = true;
-    bool enable_moving_path = true;
-    float velocity = 1.0f;
-    
-    // Spline
-    Spline* spline;
-    float _t1, _t2, _t3, pathTime;
-    float distance = 0.0f;
-
-    float path_pos;
-    int path_index = 0;
-    float path_distance = 0.0f;
-    float curr_path_segment_distance = 0.0f;
 
     void initResource() 
     {
@@ -199,18 +179,11 @@ private:
         loadAssets();
         initUniformBuffers();
         initDescriptorPool();
-
-        // Debug Line Segment
-        meshModel.debug_line_segment = new LineSegment(m_device);
-        meshModel.debug_line_segment->init();
-
-        // Splines
-        _t1 = _t2 = _t3 = pathTime = 0.0f;
-        spline = new Spline(m_device);
-        initSpline();
-        spline->calculateAdaptiveTable(_t1, _t2, _t3);
-        spline->init();
-
+        
+        m_skybox.create(m_device, "data/models/glTF-Embedded/cube.gltf", "data/textures/cubemap_yokohama_rgba.ktx");
+        m_skybox.initDescriptorSet();
+        m_skybox.initPipelines(m_device->getRenderPass());
+        
         initDescriptorSetLayout();
         initDescriptorSet();
         initPipelines();
@@ -219,7 +192,6 @@ private:
 
     void loadAssets() {
         meshModel.loadFromFile("data/models/glTF-Embedded/CesiumMan.gltf", m_device, m_device->getGraphicsQueue());
-        cubeModel.loadFromFile("data/models/glTF-Embedded/Box.gltf", m_device, m_device->getGraphicsQueue());
 
         m_defaultSampler = texture::createSampler(
             m_device->getDevice(),
@@ -238,38 +210,8 @@ private:
             FLT_MAX,
             VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
             VK_FALSE);
-
+        
         emptyTexture = texture::loadTexture("data/textures/empty.jpg", VK_FORMAT_R8G8B8A8_UNORM, m_device, 4);
-        checkerboardTexture = texture::loadTexture("data/textures/checkerboard.png", VK_FORMAT_R8G8B8A8_UNORM, m_device, 4);
-    }
-
-    void initSpline() {
-        spline->addControlPoint(glm::vec3(0.0f, 0.0f, -6.3f));
-        spline->addControlPoint(glm::vec3(0.0f, 0.0f, 0.0f));
-        spline->addControlPoint(glm::vec3(0.0f, 0.0f, 1.0f));
-        spline->addControlPoint(glm::vec3(2.0f, 0.0f, 3.0f));
-
-        spline->addControlPoint(glm::vec3(4.0f, 0.0f, 2.0f));
-        spline->addControlPoint(glm::vec3(6.0f, 0.0f, -1.0f));
-        spline->addControlPoint(glm::vec3(4.0f, 0.0f, -4.0f));
-        spline->addControlPoint(glm::vec3(2.0f, 0.0f, -7.0f));
-        
-        for (size_t i = 0; i < spline->m_controlPoints.size() - 3; ++i) {
-            glm::mat4 matrix;
-            matrix[0] = glm::vec4(spline->m_controlPoints[i], 1);
-            matrix[1] = glm::vec4(spline->m_controlPoints[i + 1], 1);
-            matrix[2] = glm::vec4(spline->m_controlPoints[i + 2], 1);
-            matrix[3] = glm::vec4(spline->m_controlPoints[i + 3], 1);
-            spline->addControlPointMatrix(glm::transpose(matrix));
-        }
-
-        for (size_t i = 0; i < spline->m_controlPointsMatrices.size(); ++i) {
-            for (float j = 0.0f; j <= 1.0f; j += 0.0001f) {
-                glm::vec3 point = spline->calculateBSpline(spline->m_controlPointsMatrices[i], j);
-                spline->addInterpolationPoint(point);
-            }
-        }
-        
     }
 
     void initUniformBuffers() {
@@ -322,59 +264,6 @@ private:
         shaderValuesScene.model[1][1] = scale;
         shaderValuesScene.model[2][2] = scale;
         //shaderValuesScene.model = glm::translate(shaderValuesScene.model, translate);
-        
-        float t1 = _t1 * 6 / velocity;
-        float t2 = _t2 * 6 / velocity;
-        float t3 = _t3 * 6 / velocity;
-        float t = pathTime;
-        float v = velocity;
-        float animationSpeedOnCurve;
-        if (t <= t1) {
-            animationSpeedOnCurve = t * (v / t1);
-            distance = (t * t * 0.5f) * (v / t1);
-        }
-        else if (pathTime > t1 && t <= t2) {
-            animationSpeedOnCurve = v;
-            distance = (v * t1 * 0.5f) + v * (t - t1);
-            //distance = (t * t * 0.5f) * (v / t1);
-        }
-        else if (t > t2 && t <= t3) {
-            animationSpeedOnCurve = (t3 - t) * (v / (t3 - t2));
-            distance = (((v * t1) * 0.5f) + v * (t2 - t1)) + (v - (v * (t - t2) / (t3 - t2)) * 0.5f) * (t - t2);
-        }
-        else {
-            distance = 0.0f;
-            t = 0.0f;
-            animationSpeedOnCurve = 0.0f;
-        }
-        pathTime = t;
-        velocity = v;
-        
-        TableValue tableValue = spline->findInTable(distance);
-        path_distance = tableValue.distance;
-        path_index = tableValue.curveIndex;
-        curr_path_segment_distance = distance;
-
-        glm::vec3 position = spline->calculateBSpline(spline->m_controlPointsMatrices[tableValue.curveIndex], tableValue.pointOnCurve);
-        glm::mat4 pathModelMatrix = glm::translate(glm::mat4(1.0f), position);
-        {
-            glm::vec3 V = spline->calculateBSplineDerivative(spline->m_controlPointsMatrices[tableValue.curveIndex], tableValue.pointOnCurve);
-            V = glm::normalize(V);
-            glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
-            glm::vec3 W = glm::normalize(glm::cross(up, V));
-            glm::vec3 U = glm::normalize(glm::cross(V, W));
-        
-            glm::mat4 rotation;
-            rotation[0] = glm::vec4(W, 0.0f);
-            rotation[1] = glm::vec4(U, 0.0f);
-            rotation[2] = glm::vec4(V, 0.0f);
-            rotation[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
-        
-            pathModelMatrix *= rotation;
-        }
-        currAnimationSpeed = animationSpeed * (animationSpeedOnCurve /= velocity);
-        glm::mat4 modelMatrix = shaderValuesScene.model;
-        shaderValuesScene.model = pathModelMatrix * modelMatrix;
     }
     void updateDebugUniformBuffer(glm::mat4 model) {
         shaderValuesDebug.projection = m_camera->matrices.perspective;
@@ -389,7 +278,7 @@ private:
         uint32_t materialCount = 0;
         uint32_t meshCount = 0;
 
-        std::vector<vkglTF::VulkanglTFModel*> modellist = { &meshModel, &cubeModel };
+        std::vector<vkglTF::VulkanglTFModel*> modellist = { &meshModel };
         for (auto& model : modellist) {
             for (auto& material : model->materials) {
                 imageSamplerCount += 5;
@@ -444,10 +333,6 @@ private:
             // Per-Node descriptor set
             for (auto& node : meshModel.nodes) {
                 meshModel.initNodeDescriptor(node, descriptorSetLayouts.node);
-            }
-
-            for (auto& node : cubeModel.nodes) {
-                cubeModel.initNodeDescriptor(node, descriptorSetLayouts.node);
             }
         }
 
@@ -513,66 +398,25 @@ private:
                 std::vector<VkDescriptorImageInfo> imageDescriptors = {
                     emptyDescriptorImageInfo,
                     emptyDescriptorImageInfo,
-                    material.normalTexture ? material.normalTexture->descriptor : emptyDescriptorImageInfo,
-                    material.occlusionTexture ? material.occlusionTexture->descriptor : emptyDescriptorImageInfo,
-                    material.emissiveTexture ? material.emissiveTexture->descriptor : emptyDescriptorImageInfo
+                    material.normalTexture ? material.normalTexture->getDescriptorImageInfo() : emptyDescriptorImageInfo,
+                    material.occlusionTexture ? material.occlusionTexture->getDescriptorImageInfo() : emptyDescriptorImageInfo,
+                    material.emissiveTexture ? material.emissiveTexture->getDescriptorImageInfo() : emptyDescriptorImageInfo
                 };
 
                 if (material.pbrWorkflows.metallicRoughness) {
                     if (material.baseColorTexture) {
-                        imageDescriptors[0] = material.baseColorTexture->descriptor;
+                        imageDescriptors[0] = material.baseColorTexture->getDescriptorImageInfo();
                     }
                     if (material.metallicRoughnessTexture) {
-                        imageDescriptors[1] = material.metallicRoughnessTexture->descriptor;
+                        imageDescriptors[1] = material.metallicRoughnessTexture->getDescriptorImageInfo();
                     }
                 } 
                 else if (material.pbrWorkflows.specularGlossiness) {
                     if (material.extension.diffuseTexture) {
-                        imageDescriptors[0] = material.extension.diffuseTexture->descriptor;
+                        imageDescriptors[0] = material.extension.diffuseTexture->getDescriptorImageInfo();
                     }
                     if (material.extension.specularGlossinessTexture) {
-                        imageDescriptors[1] = material.extension.specularGlossinessTexture->descriptor;
-                    }
-                }
-
-                std::array<VkWriteDescriptorSet, 5> writeDescriptorSets{};
-                for (size_t i = 0; i < imageDescriptors.size(); i++) {
-                    writeDescriptorSets[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                    writeDescriptorSets[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-                    writeDescriptorSets[i].descriptorCount = 1;
-                    writeDescriptorSets[i].dstSet = material.descriptorSet;
-                    writeDescriptorSets[i].dstBinding = static_cast<uint32_t>(i);
-                    writeDescriptorSets[i].pImageInfo = &imageDescriptors[i];
-                }
-                vkUpdateDescriptorSets(m_device->getDevice(), static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, NULL);
-            }
-
-            for (auto& material : cubeModel.materials) {
-                material.descriptorSet = m_device->createDescriptorSet(m_device->getDevice(), m_device->getDescriptorPool(), descriptorSetLayouts.materials);
-                VkDescriptorImageInfo emptyDescriptorImageInfo{ m_defaultSampler, emptyTexture.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-
-                std::vector<VkDescriptorImageInfo> imageDescriptors = {
-                    emptyDescriptorImageInfo,
-                    emptyDescriptorImageInfo,
-                    material.normalTexture ? material.normalTexture->descriptor : emptyDescriptorImageInfo,
-                    material.occlusionTexture ? material.occlusionTexture->descriptor : emptyDescriptorImageInfo,
-                    material.emissiveTexture ? material.emissiveTexture->descriptor : emptyDescriptorImageInfo
-                };
-
-                if (material.pbrWorkflows.metallicRoughness) {
-                    if (material.baseColorTexture) {
-                        imageDescriptors[0] = material.baseColorTexture->descriptor;
-                    }
-                    if (material.metallicRoughnessTexture) {
-                        imageDescriptors[1] = material.metallicRoughnessTexture->descriptor;
-                    }
-                }
-                else if (material.pbrWorkflows.specularGlossiness) {
-                    if (material.extension.diffuseTexture) {
-                        imageDescriptors[0] = material.extension.diffuseTexture->descriptor;
-                    }
-                    if (material.extension.specularGlossinessTexture) {
-                        imageDescriptors[1] = material.extension.specularGlossinessTexture->descriptor;
+                        imageDescriptors[1] = material.extension.specularGlossinessTexture->getDescriptorImageInfo();
                     }
                 }
 
@@ -718,30 +562,21 @@ private:
             scissor.extent = { WIDTH, HEIGHT };
             vkCmdSetScissor(currentCB, 0, 1, &scissor);
 
+            // Skybox
+            m_skybox.draw(currentCB);
+
             // Model
-            vkCmdBindPipeline(currentCB, VK_PIPELINE_BIND_POINT_GRAPHICS, enable_wireframe ? pipelines.enable_wireframe : pipelines.solid);
-            vkCmdBindVertexBuffers(currentCB, 0, 1, &meshModel.vertices.buffer, offsets);
-            if (meshModel.indices.count > 0) {
-                vkCmdBindIndexBuffer(currentCB, meshModel.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
+            {
+                vkCmdBindPipeline(currentCB, VK_PIPELINE_BIND_POINT_GRAPHICS, enable_wireframe ? pipelines.enable_wireframe : pipelines.solid);
+                vkCmdBindVertexBuffers(currentCB, 0, 1, &meshModel.vertices.buffer, offsets);
+                if (meshModel.indices.count > 0) {
+                    vkCmdBindIndexBuffer(currentCB, meshModel.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
+                }
+
+                for (auto node : meshModel.nodes) {
+                    renderNode(node, i, vkglTF::Material::ALPHAMODE_OPAQUE);
+                }
             }
-
-            // Opaque primitives first
-            for (auto node : meshModel.nodes) {
-                renderNode(node, i, vkglTF::Material::ALPHAMODE_OPAQUE);
-            }
-
-            // Draw Spline
-            spline->updateUniformBuffer(m_camera, glm::mat4(1.0f), false);
-            if (enable_debug_spline)
-                spline->drawSpline(currentCB);
-
-            spline->updateUniformBuffer(m_camera, glm::mat4(1.0f), true);
-            if (enable_debug_control_points)
-                spline->drawControlPoints(currentCB);
-
-            // Draw Joints
-            if(enable_debug_joints)
-                meshModel.drawJoint(currentCB);
 
             auto update_gui = std::bind(&Application::updateGUI, this);
             vkCmdEndRenderPass(currentCB);
@@ -811,83 +646,6 @@ private:
         }
     }
 
-    void renderCube(vkglTF::Node* node, uint32_t cbIndex, vkglTF::Material::AlphaMode alphaMode) {
-        if (node->mesh) {
-            for (vkglTF::Primitive* primitive : node->mesh->primitives) {
-                if (primitive->material.alphaMode == alphaMode) {
-                    const std::vector<VkDescriptorSet> descriptorsets = {
-                                descriptorSets[cbIndex].debug,
-                                primitive->material.descriptorSet,
-                                node->mesh->uniformBuffer.descriptorSet,
-                    };
-                    auto commandBuffers = m_device->getCommandBuffers();
-                    vkCmdBindDescriptorSets(commandBuffers[cbIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, static_cast<uint32_t>(descriptorsets.size()), descriptorsets.data(), 0, NULL);
-
-                    // Pass material parameters as push constants
-                    PushConstBlockMaterial pushConstBlockMaterial{};
-                    pushConstBlockMaterial.emissiveFactor = primitive->material.emissiveFactor;
-                    // To save push constant space, availabilty and texture coordiante set are combined
-                    // -1 = texture not used for this material, >= 0 texture used and index of texture coordinate set
-                    pushConstBlockMaterial.colorTextureSet = primitive->material.baseColorTexture != nullptr ? primitive->material.texCoordSets.baseColor : -1;
-                    pushConstBlockMaterial.normalTextureSet = primitive->material.normalTexture != nullptr ? primitive->material.texCoordSets.normal : -1;
-                    pushConstBlockMaterial.occlusionTextureSet = primitive->material.occlusionTexture != nullptr ? primitive->material.texCoordSets.occlusion : -1;
-                    pushConstBlockMaterial.emissiveTextureSet = primitive->material.emissiveTexture != nullptr ? primitive->material.texCoordSets.emissive : -1;
-                    pushConstBlockMaterial.alphaMask = static_cast<float>(primitive->material.alphaMode == vkglTF::Material::ALPHAMODE_MASK);
-                    pushConstBlockMaterial.alphaMaskCutoff = primitive->material.alphaCutoff;
-
-                    if (primitive->material.pbrWorkflows.metallicRoughness) {
-                        // Metallic roughness workflow
-                        pushConstBlockMaterial.workflow = static_cast<float>(PBR_WORKFLOW_METALLIC_ROUGHNESS);
-                        pushConstBlockMaterial.baseColorFactor = primitive->material.baseColorFactor;
-                        pushConstBlockMaterial.metallicFactor = primitive->material.metallicFactor;
-                        pushConstBlockMaterial.roughnessFactor = primitive->material.roughnessFactor;
-                        pushConstBlockMaterial.PhysicalDescriptorTextureSet = primitive->material.metallicRoughnessTexture != nullptr ? primitive->material.texCoordSets.metallicRoughness : -1;
-                        pushConstBlockMaterial.colorTextureSet = primitive->material.baseColorTexture != nullptr ? primitive->material.texCoordSets.baseColor : -1;
-                    }
-
-                    if (primitive->material.pbrWorkflows.specularGlossiness) {
-                        // Specular glossiness workflow
-                        pushConstBlockMaterial.workflow = static_cast<float>(PBR_WORKFLOW_SPECULAR_GLOSINESS);
-                        pushConstBlockMaterial.PhysicalDescriptorTextureSet = primitive->material.extension.specularGlossinessTexture != nullptr ? primitive->material.texCoordSets.specularGlossiness : -1;
-                        pushConstBlockMaterial.colorTextureSet = primitive->material.extension.diffuseTexture != nullptr ? primitive->material.texCoordSets.baseColor : -1;
-                        pushConstBlockMaterial.diffuseFactor = primitive->material.extension.diffuseFactor;
-                        pushConstBlockMaterial.specularFactor = glm::vec4(primitive->material.extension.specularFactor, 1.0f);
-                    }
-
-                    vkCmdPushConstants(commandBuffers[cbIndex], m_pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstBlockMaterial), &pushConstBlockMaterial);
-
-                    for (auto node : meshModel.nodes)
-                        drawDebugBone(node, cbIndex, primitive);
-                }
-            }
-        };
-        for (auto child : node->children) {
-            renderCube(child, cbIndex, alphaMode);
-        }
-    }
-
-    void drawDebugBone(vkglTF::Node* node, uint32_t cbIndex, vkglTF::Primitive* primitive) {
-
-        if (node->skin) {
-            auto commandBuffers = m_device->getCommandBuffers();
-            
-            for (size_t i = 0; i < node->mesh->uniformBlock.jointcount; ++i) {
-                updateDebugUniformBuffer(node->getGlobalMatrix() * node->mesh->uniformBlock.jointMatrix[i]);
-                memcpy(uniformBuffers[m_device->getCurrentFrame()].debug.mapped, &shaderValuesDebug, sizeof(shaderValuesDebug));
-        
-                if (primitive->hasIndices) {
-                    vkCmdDrawIndexed(commandBuffers[cbIndex], primitive->indexCount, 1, primitive->firstIndex, 0, 0);
-                }
-                else {
-                    vkCmdDraw(commandBuffers[cbIndex], cubeModel.vertices.count, 1, 0, 0);
-                }
-            }
-        }
-        for (auto child : node->children) {
-            drawDebugBone(child, cbIndex, primitive);
-        }
-    }
-
     void mainLoop() {
         while (!m_window->getWindowShouldClose()) {
             // Poll for user input.
@@ -907,9 +665,6 @@ private:
         auto tDiff = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
         frameTimer = (float)tDiff / 1000.0f;
         m_camera->update(frameTimer);
-
-        if(enable_animate)
-            pathTime += frameTimer;
        float fpsTimer = (float)(std::chrono::duration<double, std::milli>(tEnd - lastTimestamp).count());
        if (fpsTimer > 1000.0f)
        {
@@ -927,7 +682,6 @@ private:
         VkResult result = vkAcquireNextImageKHR(m_device->getDevice(), m_device->getSwapChain(), UINT64_MAX, m_device->m_imageAvailableSemaphores[m_device->getCurrentFrame()], VK_NULL_HANDLE, &imageIndex);
 
         if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-            //recreateSwapChain();
             return;
         }
         else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
@@ -959,13 +713,7 @@ private:
         UniformBufferSet currentUB = uniformBuffers[imageIndex];
         memcpy(currentUB.scene.mapped, &shaderValuesScene, sizeof(shaderValuesScene));
         memcpy(currentUB.params.mapped, &shaderValuesParams, sizeof(shaderValuesParams));
-        
-        // Debug Line Segment
-        meshModel.debug_line_segment->updateUniformBuffer(m_camera, shaderValuesScene.model);
-        
-        // Spline
-        //spline->updateUniformBuffer(m_camera, glm::mat4(1.0f));
-        
+        m_skybox.updateUniformBuffer();
         m_device->submitCommandBuffer(m_device->getGraphicsQueue(), &submitInfo, m_device->waitFences[m_device->getCurrentFrame()]);
 
         VkPresentInfoKHR presentInfo{};
@@ -990,35 +738,18 @@ private:
         
         // Update Animation
         if ((enable_animate) && (meshModel.animations.size() > 0)) {
-            animationTimer += frameTimer * currAnimationSpeed;
+            animationTimer += frameTimer * animationSpeed;
             if (animationTimer > meshModel.animations[animationIndex].end) {
                 animationTimer -= meshModel.animations[animationIndex].end;
             }
             meshModel.updateAnimation(animationIndex, animationTimer);
         }
-        else if (enable_IK) {
-            // Update IK
-            for (auto& node : meshModel.nodes) {
-                updateIK(node);
-            }
-        }
         updateUniformBuffer();
-    }
-
-    void updateIK(vkglTF::Node* node) {
-        if (node->skin) {
-            if(!node->skin->ccd_solver->solve(ccd_ik.target))
-                node->update();
-        }
-        for (auto child : node->children) {
-            updateIK(child);
-        }
     }
 
     void destroy() {
         gui->destroy();
         meshModel.destroy();
-        cubeModel.destroy();
         emptyTexture.destroy(m_device->getDevice());
         vkDestroySampler(m_device->getDevice(), m_defaultSampler, nullptr);
         vkDestroyDescriptorSetLayout(m_device->getDevice(), descriptorSetLayouts.scene, nullptr);
@@ -1042,23 +773,9 @@ private:
         ImGui::Checkbox("Enable Animation Update", &enable_animate);
         if(enable_animate) {
             ImGui::Checkbox("Enable slerp", &enable_slerp);
-            ImGui::SliderFloat("Animation Velocity", &velocity, 0.1f, 10.0f);
             ImGui::SliderFloat("Animation Speed", &animationSpeed, 0.1f, 10.0f);
-            ImGui::Text("Path current Time %.5f", pathTime);
-            ImGui::Text("Path current distance %.3f", path_distance);
-            ImGui::Text("Path current segment distance %.3f", curr_path_segment_distance);
-            ImGui::Text("Path current index %d", path_index);
-            ImGui::Text("Current Animation Speed %.5f", currAnimationSpeed);
-
-            ImGui::Checkbox("Enable IK", &enable_IK);
-            if (enable_IK) {
-                ImGui::SliderFloat3("IK Target", glm::value_ptr(ccd_ik.target), -100.0f, 100.0f);
-            }
         }
         ImGui::Checkbox("Show Wireframe", &enable_wireframe);
-        ImGui::Checkbox("Enable Debug Joints", &enable_debug_joints);
-        ImGui::Checkbox("Enable Debug Spline", &enable_debug_spline);
-        ImGui::Checkbox("Enable Debug Control Points", &enable_debug_control_points);
         ImGui::End();
     }
 
