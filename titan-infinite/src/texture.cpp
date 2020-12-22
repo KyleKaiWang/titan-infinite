@@ -370,7 +370,7 @@ namespace texture {
             VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
             0.0,
             VK_TRUE,
-            1.0f,
+            16.0f,
             VK_FALSE,
             VK_COMPARE_OP_NEVER,
             0.0,

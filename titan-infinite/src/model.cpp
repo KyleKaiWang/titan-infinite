@@ -731,10 +731,6 @@ TextureObject VulkanglTFModel::fromglTfImage(tinygltf::Image& gltfimage, Device*
 	viewInfo.subresourceRange.levelCount = texObj.mipLevels;
 	VK_CHECK_RESULT(vkCreateImageView(device->getDevice(), &viewInfo, nullptr, &texObj.view));
 
-	texObj.descriptor.sampler = texObj.sampler;
-	texObj.descriptor.imageView = texObj.view;
-	texObj.descriptor.imageLayout = texObj.image_layout;
-
 	return texObj;
 }
 
