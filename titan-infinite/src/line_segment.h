@@ -201,7 +201,7 @@ public:
 		dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());;
 
 		m_pipelineLayout = m_device->createPipelineLayout(m_device->getDevice(), { m_descriptorSetLayout }, {});
-		std::vector<ShaderStage> shaderStages_mesh = m_device->createShader(m_device->getDevice(), "data/shaders/debug_draw.vert.spv", "data/shaders/debug_draw.frag.spv");
+		std::vector<ShaderStage> shaderStages_mesh = m_device->createShader(m_device->getDevice(), "../../data/shaders/debug_draw.vert.spv", "../../data/shaders/debug_draw.frag.spv");
 		m_pipeline = m_device->createGraphicsPipeline(m_device->getDevice(), m_device->getPipelineCache(), shaderStages_mesh, vertexInputState, inputAssembly, viewport, rasterizer, multisampling, depthStencil, colorBlending, dynamicState, m_pipelineLayout, m_device->getRenderPass());
 
 		initialized = true;
