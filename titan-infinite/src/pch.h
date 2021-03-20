@@ -29,6 +29,7 @@
 #include <glm/gtx/euler_angles.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include "transform.h"
+#include "timer.h"
 
 #include "vkHelpers.h"
 #include "renderer.h"

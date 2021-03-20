@@ -117,7 +117,8 @@ struct Camera
 				front.x = -cos(glm::radians(rotation.x)) * sin(glm::radians(rotation.y));
 				front.y =  sin(glm::radians(rotation.x));
 				front.z =  cos(glm::radians(rotation.x)) * cos(glm::radians(rotation.y));
-				setFront(glm::normalize(front));
+				front = glm::normalize(front);
+				setFront(front);
 
 				float moveSpeed = deltaTime * movementSpeed;
 

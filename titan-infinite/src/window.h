@@ -7,6 +7,7 @@
 #pragma once
 #include <GLFW/glfw3.h>
 #include "camera.h"
+#include "timer.h"
 
 //const int DisplaySamples = 16;
 //const float ViewDistance = 5.0f;

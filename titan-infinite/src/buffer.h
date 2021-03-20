@@ -16,7 +16,7 @@ struct Buffer
     uint32_t memoryTypeIndex;
     VkDescriptorBufferInfo descriptor;
     void* mapped = nullptr;
-    VkResult Buffer::map(VkDeviceSize size = VK_WHOLE_SIZE, VkDeviceSize offset = 0);
+    VkResult map(VkDeviceSize size = VK_WHOLE_SIZE, VkDeviceSize offset = 0);
     void unmap();
     void updateDescriptor(VkDeviceSize size = VK_WHOLE_SIZE, VkDeviceSize offset = 0);
     void flush(VkDeviceSize size = VK_WHOLE_SIZE, VkDeviceSize offset = 0);

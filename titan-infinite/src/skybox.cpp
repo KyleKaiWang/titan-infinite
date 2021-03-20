@@ -120,7 +120,7 @@ void Skybox::bindSkyboxTexture(uint32_t dstBinding)
 
 void Skybox::initPipelines(const VkRenderPass& renderPass)
 {
-	std::vector<ShaderStage> shaderStages_skybox = m_device->createShader(m_device->getDevice(), "data/shaders/skybox.vert.spv", "data/shaders/skybox.frag.spv");
+	std::vector<ShaderStage> shaderStages_skybox = m_device->createShader(m_device->getDevice(), "../../data/shaders/skybox.vert.spv", "../../data/shaders/skybox.frag.spv");
 
 	VertexInputState vertexInputState = {
 		
