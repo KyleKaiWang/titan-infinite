@@ -6,10 +6,6 @@
 
 #pragma once
 
-#include <vulkan/vulkan.hpp>
-#include <optional>
-#include <fstream>
-
 #define VK_CHECK_RESULT(f)																				\
 {																										\
 	VkResult res = (f);																					\
@@ -135,5 +131,17 @@ namespace vkHelper {
             throw std::runtime_error{ "Filename has no extension" };
         }
         return filename.substr(dot_pos + 1);
+    }
+
+    extern std::unordered_map<const char*, bool> device_extensions;
+
+    inline const std::unordered_map<const char*, bool> getDeviceExtensions()
+    {
+        return device_extensions;
+    }
+
+    inline void addDeviceExtension(const char* extension, bool optional = true)
+    {
+        device_extensions[extension] = optional;
     }
 }

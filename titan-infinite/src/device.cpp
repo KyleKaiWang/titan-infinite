@@ -15,13 +15,30 @@ Device::~Device()
     destroy();
 }
 
-void Device::create(Window* window) {
+void Device::create(Window* window, std::unordered_map<const char*, bool> deviceExtensions, std::function<void()> func) {
     m_window = window;
+    
+    // Add extenisons
+    {
+        for (auto& extension : deviceExtensions) {
+                m_enabledExtensions.emplace_back(extension.first);
+        }
+    }
     createInstance();
     setupDebugMessenger(m_instance);
     createSurface(m_instance, m_window->getNativeWindow());
     pickPhysicalDevice();
-    createLogicalDevice(m_physicalDevice, m_surface);
+
+    // Require enable features
+    func();
+    //assert(checkDeviceExtensionSupport(m_physicalDevice) == true);
+    
+    VkPhysicalDeviceFeatures deviceFeatures;
+    deviceFeatures.samplerAnisotropy = VK_TRUE;
+    deviceFeatures.fillModeNonSolid = VK_TRUE;
+    deviceFeatures.largePoints = VK_TRUE;
+
+    createLogicalDevice(m_physicalDevice, m_surface, deviceFeatures);
 
     createSwapChain(m_physicalDevice, m_device, m_surface);
     m_commandPool = createCommandPool(m_device, vkHelper::findQueueFamilies(m_physicalDevice, m_surface).graphicsFamily.value());
@@ -561,6 +578,15 @@ ShaderStage Device::createShader(const VkDevice& device, const std::string& comp
     return computeShaderStage;
 }
 
+ShaderStage Device::createRayTracingShader(const std::string& shaderFile, VkShaderStageFlagBits stage) {
+    ShaderStage shaderStage{};
+    shaderStage.stage = stage;
+    shaderStage.module = createShaderModule(m_device, vkHelper::readFile(shaderFile));
+    shaderStage.pName = "main";
+
+    return shaderStage;
+}
+
 VkDescriptorSetLayout Device::createDescriptorSetLayout(const VkDevice& device, const std::vector<DescriptorSetLayoutBinding>& descriptorSetLayoutBindings) {
     std::vector<VkDescriptorSetLayoutBinding> convertedBindings;
     for (const DescriptorSetLayoutBinding& binding : descriptorSetLayoutBindings) {
@@ -847,7 +873,7 @@ bool Device::checkDeviceExtensionSupport(VkPhysicalDevice device) {
     std::vector<VkExtensionProperties> availableExtensions(extensionCount);
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
 
-    std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
+    std::set<const char*> requiredExtensions(m_enabledExtensions.begin(), m_enabledExtensions.end());
 
     for (const auto& extension : availableExtensions) {
         requiredExtensions.erase(extension.extensionName);
@@ -881,7 +907,7 @@ bool Device::checkValidationLayerSupport() {
     return true;
 }
 
-void Device::createLogicalDevice(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface) {
+void Device::createLogicalDevice(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, VkPhysicalDeviceFeatures enabledFeatures) {
     QueueFamilyIndices indices = vkHelper::findQueueFamilies(physicalDevice, surface);
 
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
@@ -897,21 +923,26 @@ void Device::createLogicalDevice(VkPhysicalDevice physicalDevice, VkSurfaceKHR s
         queueCreateInfos.push_back(queueCreateInfo);
     }
 
-    VkPhysicalDeviceFeatures deviceFeatures{};
-    deviceFeatures.samplerAnisotropy = VK_TRUE;
-    deviceFeatures.fillModeNonSolid = VK_TRUE;
-    deviceFeatures.largePoints = VK_TRUE;
-
     VkDeviceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 
     createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
     createInfo.pQueueCreateInfos = queueCreateInfos.data();
+    createInfo.pEnabledFeatures = &enabledFeatures;
 
-    createInfo.pEnabledFeatures = &deviceFeatures;
+    // If a pNext(Chain) has been passed, we need to add it to the device creation info
+    VkPhysicalDeviceFeatures2 deviceFeatures2{};
+    if (m_deviceCreatepNextChain) {
+        deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        deviceFeatures2.features = enabledFeatures;
+        deviceFeatures2.pNext = &m_deviceCreatepNextChain;
+        createInfo.pEnabledFeatures = nullptr;
+        createInfo.pNext = &deviceFeatures2;
+    }
 
-    createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
-    createInfo.ppEnabledExtensionNames = deviceExtensions.data();
+
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(m_enabledExtensions.size());
+    createInfo.ppEnabledExtensionNames = m_enabledExtensions.data();
 
     if (enableValidationLayers) {
         createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());

@@ -17,9 +17,6 @@ const bool enableValidationLayers = false;
 const std::vector<const char*> validationLayers = {
     "VK_LAYER_KHRONOS_validation"
 };
-const std::vector<const char*> deviceExtensions = {
-        VK_KHR_SWAPCHAIN_EXTENSION_NAME
-};
 
 const uint32_t WIDTH = 1280;
 const uint32_t HEIGHT = 720;
@@ -34,6 +31,7 @@ struct Device {
     Device();
     ~Device();
 
+    // Swapchain
     VkSwapchainKHR m_swapChain;
     VkFormat m_swapChainImageFormat;
     VkExtent2D m_swapChainExtent;
@@ -49,17 +47,20 @@ struct Device {
     size_t m_currentFrame = 0;
     size_t getCurrentFrame() { return m_currentFrame; }
 
+    // Synchronization
     std::vector<VkFence>       m_imagesInFlight;
     std::vector<VkFence>       waitFences;
     std::vector<VkSemaphore>   m_imageAvailableSemaphores;
     std::vector<VkSemaphore>   m_renderFinishedSemaphores;
 
+    // Command Buffer
     VkCommandPool m_commandPool;
     std::vector<VkCommandBuffer> m_commandBuffers;
     const VkCommandPool& getCommandPool() const { return m_commandPool; }
     const std::vector<VkCommandBuffer>& getCommandBuffers() { return m_commandBuffers; }
     VkCommandBuffer getCurrentCommandBuffer() { return m_commandBuffers[m_currentFrame]; }
 
+    // Descriptor
     VkDescriptorPool m_descriptorPool;
     std::vector<VkDescriptorSet> m_descriptorSets;
     const VkDescriptorPool& getDescriptorPool() const { return m_descriptorPool; }
@@ -88,6 +89,10 @@ struct Device {
     VkDebugUtilsMessengerEXT debugMessenger;
     VkPhysicalDeviceMemoryProperties m_memoryProperties;
 
+    std::vector<const char*> m_enabledExtensions{};
+
+    void* m_deviceCreatepNextChain = nullptr;
+
     VkDevice getDevice() const { return m_device; }
     VkPhysicalDevice getPhysicalDevice() const { return m_physicalDevice; }
     VkInstance getInstance() const { return m_instance; }
@@ -99,12 +104,12 @@ struct Device {
     const Depthbuffer& getDepthbuffer() const { return m_depthbuffer; }
     const std::vector<VkFramebuffer>& getFramebuffers() const { return m_framebuffers; }
     VkPipelineCache getPipelineCache() const { return m_pipelineCache; }
-    void create(Window* window);
+    void create(Window* window, std::unordered_map<const char*, bool> deviceExtensions = {}, std::function<void()> func = nullptr);
     void destroy();
 
     void createSurface(VkInstance instance, GLFWwindow* window);
     void createInstance();
-    void createLogicalDevice(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface);
+    void createLogicalDevice(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, VkPhysicalDeviceFeatures enabledFeatures = {});
     
     void createSwapChain(const VkPhysicalDevice& physicalDevice, VkDevice device, const VkSurfaceKHR& surface);
     void destroySwapChain();
@@ -161,6 +166,7 @@ struct Device {
     VkShaderModule createShaderModule(const VkDevice& device, const std::vector<char>& code);
     std::vector<ShaderStage> createShader(const VkDevice& device, const std::string& vertexShaderFile, const std::string& pixelShaderFile);
     ShaderStage createShader(const VkDevice& device, const std::string& computeShaderFile);
+    ShaderStage createRayTracingShader(const std::string& shaderFile, VkShaderStageFlagBits stage);
     VkDescriptorSetLayout createDescriptorSetLayout(const VkDevice& device, const std::vector<DescriptorSetLayoutBinding>& descriptorSetLayoutBindings);
     VkPipelineLayout createPipelineLayout(const VkDevice& device, const std::vector<VkDescriptorSetLayout>& descriptorSetLayout, const std::vector<VkPushConstantRange>& pushConstantRanges);
 

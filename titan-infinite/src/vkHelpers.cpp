@@ -6,3 +6,7 @@
 
 #include "pch.h"
 #include "vkHelpers.h"
+
+namespace vkHelper {
+	std::unordered_map<const char*, bool> device_extensions;
+}

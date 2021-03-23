@@ -17,6 +17,7 @@
 #include <set>
 #include <chrono>
 #include <assert.h>
+#include <unordered_map>
 
 #include <stb_image.h>
 #include <stb_image_write.h>

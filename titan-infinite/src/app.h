@@ -11,6 +11,7 @@ public:
 	virtual void render() = 0;
 	inline static App& get() { return *s_app; }
 	
+	virtual void getEnabledFeatures() = 0;
 private:
 	static App* s_app;
 };
