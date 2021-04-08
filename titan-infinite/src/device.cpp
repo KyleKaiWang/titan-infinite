@@ -15,13 +15,17 @@ Device::~Device()
     destroy();
 }
 
-void Device::create(Window* window, std::unordered_map<const char*, bool> deviceExtensions, std::function<void()> func) {
+void Device::create(Window* window, const std::unordered_map<const char*, bool>& instanceExtensions, const std::unordered_map<const char*, bool>& deviceExtensions, std::function<void()> func) {
     m_window = window;
     
     // Add extenisons
     {
         for (auto& extension : deviceExtensions) {
                 m_enabledExtensions.emplace_back(extension.first);
+        }
+
+        for (auto& extension : instanceExtensions) {
+            m_enabledInstanceExtensions.emplace_back(extension.first);
         }
     }
     createInstance();
@@ -31,9 +35,9 @@ void Device::create(Window* window, std::unordered_map<const char*, bool> device
 
     // Require enable features
     func();
-    //assert(checkDeviceExtensionSupport(m_physicalDevice) == true);
+    checkDeviceExtensionSupport(m_physicalDevice);
     
-    VkPhysicalDeviceFeatures deviceFeatures;
+    VkPhysicalDeviceFeatures deviceFeatures{VK_FALSE};
     deviceFeatures.samplerAnisotropy = VK_TRUE;
     deviceFeatures.fillModeNonSolid = VK_TRUE;
     deviceFeatures.largePoints = VK_TRUE;
@@ -215,7 +219,7 @@ void Device::createInstance() {
 
     VkApplicationInfo appInfo{};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    appInfo.pApplicationName = "Hello Titan";
+    appInfo.pApplicationName = "Titan Infinite Renderer";
     appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
     appInfo.pEngineName = "Titan Infinite";
     appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
@@ -224,10 +228,14 @@ void Device::createInstance() {
     VkInstanceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     createInfo.pApplicationInfo = &appInfo;
-
-    auto extensions = getRequiredExtensions();
-    createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
-    createInfo.ppEnabledExtensionNames = extensions.data();
+    {
+        auto extensions = getRequiredExtensions();
+        for (int i = 0; i < extensions.size(); ++i) {
+            m_enabledInstanceExtensions.push_back(extensions[i]);
+        }
+    }
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(m_enabledInstanceExtensions.size());
+    createInfo.ppEnabledExtensionNames = m_enabledInstanceExtensions.data();
 
     VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo;
     if (enableValidationLayers) {
@@ -923,24 +931,21 @@ void Device::createLogicalDevice(VkPhysicalDevice physicalDevice, VkSurfaceKHR s
         queueCreateInfos.push_back(queueCreateInfo);
     }
 
-    VkDeviceCreateInfo createInfo{};
-    createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-
+    VkDeviceCreateInfo createInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
     createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
     createInfo.pQueueCreateInfos = queueCreateInfos.data();
     createInfo.pEnabledFeatures = &enabledFeatures;
 
     // If a pNext(Chain) has been passed, we need to add it to the device creation info
-    VkPhysicalDeviceFeatures2 deviceFeatures2{};
-    if (m_deviceCreatepNextChain) {
-        deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-        deviceFeatures2.features = enabledFeatures;
-        deviceFeatures2.pNext = &m_deviceCreatepNextChain;
-        createInfo.pEnabledFeatures = nullptr;
-        createInfo.pNext = &deviceFeatures2;
-    }
+    VkPhysicalDeviceVulkan12Features features12{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
+    features12.bufferDeviceAddress = true;
+    features12.descriptorIndexing = true;
+    
+    VkPhysicalDeviceFeatures2 deviceFeatures2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+    deviceFeatures2.pNext = &features12;
 
-
+    createInfo.pEnabledFeatures = nullptr;
+    createInfo.pNext = &deviceFeatures2;
     createInfo.enabledExtensionCount = static_cast<uint32_t>(m_enabledExtensions.size());
     createInfo.ppEnabledExtensionNames = m_enabledExtensions.data();
 

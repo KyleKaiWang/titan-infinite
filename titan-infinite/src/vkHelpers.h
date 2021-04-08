@@ -144,4 +144,16 @@ namespace vkHelper {
     {
         device_extensions[extension] = optional;
     }
+
+    extern std::unordered_map<const char*, bool> instance_extensions;
+
+    inline const std::unordered_map<const char*, bool> getInstanceExtensions()
+    {
+        return instance_extensions;
+    }
+
+    inline void addInstanceExtension(const char* extension, bool optional = true)
+    {
+        instance_extensions[extension] = optional;
+    }
 }

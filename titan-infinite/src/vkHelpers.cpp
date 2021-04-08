@@ -9,4 +9,5 @@
 
 namespace vkHelper {
 	std::unordered_map<const char*, bool> device_extensions;
+	std::unordered_map<const char*, bool> instance_extensions;
 }

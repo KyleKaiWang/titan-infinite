@@ -36,8 +36,14 @@ public:
     Test_RayTracing() {
         // Add extension
         {
+            // Instance
+            vkHelper::addInstanceExtension(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+            vkHelper::addInstanceExtension(VK_KHR_DEVICE_GROUP_CREATION_EXTENSION_NAME);
+
             // Swap chain
             vkHelper::addDeviceExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+            vkHelper::addDeviceExtension(VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME);
+            vkHelper::addDeviceExtension(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
 
             // Ray tracing related extensions required by this sample
             vkHelper::addDeviceExtension(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
@@ -47,12 +53,16 @@ public:
             vkHelper::addDeviceExtension(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
             vkHelper::addDeviceExtension(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
             vkHelper::addDeviceExtension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
-
+            vkHelper::addDeviceExtension("VK_KHR_ray_query");
+            
             // Required for VK_KHR_ray_tracing_pipeline
             vkHelper::addDeviceExtension(VK_KHR_SPIRV_1_4_EXTENSION_NAME);
 
             // Required by VK_KHR_spirv_1_4
             vkHelper::addDeviceExtension(VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME);
+
+            vkHelper::addDeviceExtension(VK_KHR_MAINTENANCE3_EXTENSION_NAME);
+            vkHelper::addDeviceExtension(VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME);
         }
     }
     ~Test_RayTracing() {
@@ -86,23 +96,6 @@ public:
     }
 
     void getEnabledFeatures() override {
-        // This sample copies the ray traced output to the swap chain image, so we need to enable the required image usage flags
-        //std::set<VkImageUsageFlagBits> image_usage_flags = { VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_IMAGE_USAGE_TRANSFER_DST_BIT };
-        //get_render_context().update_swapchain(image_usage_flags);
-
-        // Get the ray tracing pipeline properties, which we'll need later on in the sample
-        ray_tracing_pipeline_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR;
-        VkPhysicalDeviceProperties2 device_properties{};
-        device_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-        device_properties.pNext = &ray_tracing_pipeline_properties;
-        vkGetPhysicalDeviceProperties2(m_device->getPhysicalDevice(), &device_properties);
-
-        // Get the acceleration structure features, which we'll need later on in the sample
-        acceleration_structure_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
-        VkPhysicalDeviceFeatures2 device_features{};
-        device_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-        device_features.pNext = &acceleration_structure_features;
-        vkGetPhysicalDeviceFeatures2(m_device->getPhysicalDevice(), &device_features);
 
         // These are passed to device creation via a pNext structure chain
         enabled_buffer_device_addres_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
@@ -133,7 +126,6 @@ private:
 
     // glTF
     vkglTF::VulkanglTFModel meshModel;
-    //vkglTF::VulkanglTFModel cubeModel;
 
     struct Pipelines
     {
@@ -304,10 +296,24 @@ private:
 
         // Physical, Logical Device and Surface
         m_device = new Device();
-        m_device->create(m_window, vkHelper::getDeviceExtensions(), getfeatures);
+        m_device->create(m_window, vkHelper::getInstanceExtensions(), vkHelper::getDeviceExtensions(), getfeatures);
 
         // Ray Tracing init
         {
+            // Get the ray tracing pipeline properties, which we'll need later on in the sample
+            ray_tracing_pipeline_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR;
+            VkPhysicalDeviceProperties2 device_properties{};
+            device_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+            device_properties.pNext = &ray_tracing_pipeline_properties;
+            vkGetPhysicalDeviceProperties2(m_device->getPhysicalDevice(), &device_properties);
+
+            // Get the acceleration structure features, which we'll need later on in the sample
+            acceleration_structure_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+            VkPhysicalDeviceFeatures2 device_features{};
+            device_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+            device_features.pNext = &acceleration_structure_features;
+            vkGetPhysicalDeviceFeatures2(m_device->getPhysicalDevice(), &device_features);
+
             // Get the function pointers required for ray tracing
             vkGetBufferDeviceAddressKHR = reinterpret_cast<PFN_vkGetBufferDeviceAddressKHR>(vkGetDeviceProcAddr(m_device->getDevice(), "vkGetBufferDeviceAddressKHR"));
             vkCmdBuildAccelerationStructuresKHR = reinterpret_cast<PFN_vkCmdBuildAccelerationStructuresKHR>(vkGetDeviceProcAddr(m_device->getDevice(), "vkCmdBuildAccelerationStructuresKHR"));

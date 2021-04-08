@@ -90,6 +90,7 @@ struct Device {
     VkPhysicalDeviceMemoryProperties m_memoryProperties;
 
     std::vector<const char*> m_enabledExtensions{};
+    std::vector<const char*> m_enabledInstanceExtensions{};
 
     void* m_deviceCreatepNextChain = nullptr;
 
@@ -104,7 +105,7 @@ struct Device {
     const Depthbuffer& getDepthbuffer() const { return m_depthbuffer; }
     const std::vector<VkFramebuffer>& getFramebuffers() const { return m_framebuffers; }
     VkPipelineCache getPipelineCache() const { return m_pipelineCache; }
-    void create(Window* window, std::unordered_map<const char*, bool> deviceExtensions = {}, std::function<void()> func = nullptr);
+    void create(Window* window, const std::unordered_map<const char*, bool>& instanceExtensions = {}, const std::unordered_map<const char*, bool>& deviceExtensions = {}, std::function<void()> func = nullptr);
     void destroy();
 
     void createSurface(VkInstance instance, GLFWwindow* window);
