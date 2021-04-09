@@ -940,6 +940,7 @@ void Device::createLogicalDevice(VkPhysicalDevice physicalDevice, VkSurfaceKHR s
     VkPhysicalDeviceVulkan12Features features12{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
     features12.bufferDeviceAddress = true;
     features12.descriptorIndexing = true;
+    features12.pNext = m_deviceCreatepNextChain;
     
     VkPhysicalDeviceFeatures2 deviceFeatures2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
     deviceFeatures2.pNext = &features12;

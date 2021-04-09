@@ -100,6 +100,13 @@ namespace buffer {
         allocInfo.allocationSize = memReqs.size;
         allocInfo.memoryTypeIndex = device->findMemoryType(memReqs.memoryTypeBits, memoryFlags);
 
+        // If the buffer has VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT set we also need to enable the appropriate flag during allocation
+        VkMemoryAllocateFlagsInfoKHR allocFlagsInfo{ VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO_KHR };
+        if (memoryFlags & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
+            allocFlagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR;
+            allocInfo.pNext = &allocFlagsInfo;
+        }
+
         if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &buffer.memory) != VK_SUCCESS) {
             throw std::runtime_error("failed to allocate uniform buffer memory!");
         }
@@ -151,6 +158,13 @@ namespace buffer {
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memReqs.size;
         allocInfo.memoryTypeIndex = device->findMemoryType(memReqs.memoryTypeBits, memoryFlags);
+
+        // If the buffer has VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT set we also need to enable the appropriate flag during allocation
+        VkMemoryAllocateFlagsInfoKHR allocFlagsInfo{ VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO_KHR };
+        if (memoryFlags & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
+            allocFlagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR;
+            allocInfo.pNext = &allocFlagsInfo;
+        }
 
         if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, memory) != VK_SUCCESS) {
             throw std::runtime_error("failed to allocate uniform buffer memory!");
