@@ -117,106 +117,12 @@ private:
     Device* m_device;
     Camera* m_camera;
 
-    struct DescriptorSets {
-        VkDescriptorSet scene;
-        VkDescriptorSet debug;
-    };
-
-    VkPipelineLayout m_pipelineLayout;
-
-    // glTF
-    vkglTF::VulkanglTFModel meshModel;
-
-    struct Pipelines
-    {
-        VkPipeline solid;
-        VkPipeline enable_wireframe = VK_NULL_HANDLE;
-    } pipelines;
-
-    struct DescriptorSetLayouts
-    {
-        VkDescriptorSetLayout scene;
-        VkDescriptorSetLayout materials;
-        VkDescriptorSetLayout node;
-    } descriptorSetLayouts;
-
-    struct UniformBufferSet {
-        Buffer scene;
-        Buffer params;
-        Buffer debug;
-    };
-
-    struct UBOMatrices {
-        glm::mat4 projection = glm::mat4(1.0f);
-        glm::mat4 model = glm::mat4(1.0f);
-        glm::mat4 view = glm::mat4(1.0f);
-        glm::vec3 camPos = glm::vec3(0.0f);
-    }shaderValuesScene, shaderValuesDebug;
-
-    std::vector<DescriptorSets> descriptorSets;
-    std::vector<UniformBufferSet> uniformBuffers;
-
-    struct shaderValuesParams {
-        glm::vec4 lightDir = glm::vec4(10.0f, 10.0f, 10.0f, 1.0f);
-        float exposure = 4.5f;
-        float gamma = 2.2f;
-        float prefilteredCubeMipLevels = 1.0f;
-        float scaleIBLAmbient = 1.0f;
-        float debugViewInputs = 0;
-        float debugViewEquation = 0;
-        float enableDebugBones = 0.0f;
-        glm::vec3 camPos = glm::vec3(10.0f, 10.0f, 10.0f);
-    } shaderValuesParams;
-
-    enum PBRWorkflows { PBR_WORKFLOW_METALLIC_ROUGHNESS = 0, PBR_WORKFLOW_SPECULAR_GLOSINESS = 1 };
-
-    struct PushConstBlockMaterial {
-        glm::vec4 baseColorFactor;
-        glm::vec4 emissiveFactor;
-        glm::vec4 diffuseFactor;
-        glm::vec4 specularFactor;
-        float workflow;
-        int colorTextureSet;
-        int PhysicalDescriptorTextureSet;
-        int normalTextureSet;
-        int occlusionTextureSet;
-        int emissiveTextureSet;
-        float metallicFactor;
-        float roughnessFactor;
-        float alphaMask;
-        float alphaMaskCutoff;
-    } pushConstBlockMaterial;
-
-    TextureObject emptyTexture;
-    //TextureObject textureCube;
-    VkSampler m_defaultSampler;
-
-    struct SpecularFilterPushConstants
-    {
-        uint32_t level = 1;
-        float roughness = 1.0f;
-    };
-
     // Mesuring frame time
     float frameTimer = 0.0f;
     uint32_t frameCounter = 0;
     uint32_t lastFPS = 0;
+
     std::chrono::time_point<std::chrono::high_resolution_clock> lastTimestamp;
-
-    //Skybox
-    Skybox m_skybox;
-
-    // Animation 
-    int32_t animationIndex = 0;
-    float animationTimer = 0.0f;
-    float animationSpeed = 1.0f;
-
-    // Values show on UI
-    Gui* gui;
-    bool enable_wireframe = false;
-    bool enable_animate = false;
-    bool enable_slerp = true;
-    bool enable_debug_joints = false;
 
     VkPhysicalDeviceRayTracingPipelinePropertiesKHR  ray_tracing_pipeline_properties{};
     VkPhysicalDeviceAccelerationStructureFeaturesKHR acceleration_structure_features{};
@@ -336,28 +242,6 @@ private:
             initDescriptorSets();
             buildCommandBuffers();
         }
-
-
-        // Gui
-        //gui = new Gui();
-        //gui->init(m_device);
-        //
-        //uniformBuffers.resize(m_device->getSwapChainimages().size());
-        //descriptorSets.resize(m_device->getSwapChainimages().size());
-
-        //loadAssets();
-        //initUniformBuffers();
-        //initDescriptorPool();
-
-        // Skybox
-        //m_skybox.create(m_device, "../../data/models/glTF-Embedded/cube.gltf", "../../data/textures/cubemap_yokohama_rgba.ktx");
-        //m_skybox.initDescriptorSet();
-        //m_skybox.initPipelines(m_device->getRenderPass());
-        //
-        //initDescriptorSetLayout();
-        //initDescriptorSet();
-        //initPipelines();
-        //buildCommandBuffers();
     }
 
     void initStorageImage()
@@ -992,30 +876,6 @@ private:
         }
     }
 
-    void loadAssets() {
-        meshModel.loadFromFile("../../data/models/glTF-Embedded/CesiumMan.gltf", m_device, m_device->getGraphicsQueue());
-
-        m_defaultSampler = texture::createSampler(
-            m_device->getDevice(),
-            VK_FILTER_LINEAR,
-            VK_FILTER_LINEAR,
-            VK_SAMPLER_MIPMAP_MODE_LINEAR,
-            VK_SAMPLER_ADDRESS_MODE_REPEAT,
-            VK_SAMPLER_ADDRESS_MODE_REPEAT,
-            VK_SAMPLER_ADDRESS_MODE_REPEAT,
-            0.0,
-            VK_TRUE,
-            16.0f,
-            VK_FALSE,
-            VK_COMPARE_OP_ALWAYS,
-            0.0,
-            FLT_MAX,
-            VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
-            VK_FALSE);
-
-        emptyTexture = texture::loadTexture("../../data/textures/empty.jpg", VK_FORMAT_R8G8B8A8_UNORM, m_device, 4);
-    }
-
     void initUniformBuffers() {
 
         ubo = buffer::createBuffer(
@@ -1029,29 +889,6 @@ private:
         ubo.map();
 
         updateUniformBuffer();
-        //for (auto& uniformBuffer : uniformBuffers) {
-        //    uniformBuffer.scene = buffer::createBuffer(
-        //        m_device,
-        //        sizeof(shaderValuesScene),
-        //        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-        //        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-        //    );
-        //    memory::map(m_device->getDevice(), uniformBuffer.scene.memory, 0, uniformBuffer.scene.bufferSize, &uniformBuffer.scene.mapped);
-        //    uniformBuffer.debug = buffer::createBuffer(
-        //        m_device,
-        //        sizeof(shaderValuesDebug),
-        //        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-        //        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-        //    );
-        //    memory::map(m_device->getDevice(), uniformBuffer.debug.memory, 0, uniformBuffer.debug.bufferSize, &uniformBuffer.debug.mapped);
-        //    uniformBuffer.params = buffer::createBuffer(
-        //        m_device,
-        //        sizeof(shaderValuesParams),
-        //        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-        //        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-        //    );
-        //    memory::map(m_device->getDevice(), uniformBuffer.params.memory, 0, uniformBuffer.params.bufferSize, &uniformBuffer.params.mapped);
-        //}
     }
 
     float ParametricBlend(float t)
@@ -1064,67 +901,6 @@ private:
         uniform_data.proj_inverse = glm::inverse(m_camera->matrices.perspective);
         uniform_data.view_inverse = glm::inverse(m_camera->matrices.view);
         memcpy(ubo.mapped, &uniform_data, sizeof(uniform_data));
-    }
-
-    void renderNode(vkglTF::Node* node, uint32_t cbIndex, vkglTF::Material::AlphaMode alphaMode) {
-        if (node->mesh) {
-            // Render mesh primitives
-            for (vkglTF::Primitive* primitive : node->mesh->primitives) {
-                if (primitive->material.alphaMode == alphaMode) {
-
-                    const std::vector<VkDescriptorSet> descriptorsets = {
-                        descriptorSets[cbIndex].scene,
-                        primitive->material.descriptorSet,
-                        node->mesh->uniformBuffer.descriptorSet,
-                    };
-                    auto commandBuffers = m_device->getCommandBuffers();
-                    vkCmdBindDescriptorSets(commandBuffers[cbIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, static_cast<uint32_t>(descriptorsets.size()), descriptorsets.data(), 0, NULL);
-
-                    // Pass material parameters as push constants
-                    PushConstBlockMaterial pushConstBlockMaterial{};
-                    pushConstBlockMaterial.emissiveFactor = primitive->material.emissiveFactor;
-                    // To save push constant space, availabilty and texture coordiante set are combined
-                    // -1 = texture not used for this material, >= 0 texture used and index of texture coordinate set
-                    pushConstBlockMaterial.colorTextureSet = primitive->material.baseColorTexture != nullptr ? primitive->material.texCoordSets.baseColor : -1;
-                    pushConstBlockMaterial.normalTextureSet = primitive->material.normalTexture != nullptr ? primitive->material.texCoordSets.normal : -1;
-                    pushConstBlockMaterial.occlusionTextureSet = primitive->material.occlusionTexture != nullptr ? primitive->material.texCoordSets.occlusion : -1;
-                    pushConstBlockMaterial.emissiveTextureSet = primitive->material.emissiveTexture != nullptr ? primitive->material.texCoordSets.emissive : -1;
-                    pushConstBlockMaterial.alphaMask = static_cast<float>(primitive->material.alphaMode == vkglTF::Material::ALPHAMODE_MASK);
-                    pushConstBlockMaterial.alphaMaskCutoff = primitive->material.alphaCutoff;
-
-                    if (primitive->material.pbrWorkflows.metallicRoughness) {
-                        // Metallic roughness workflow
-                        pushConstBlockMaterial.workflow = static_cast<float>(PBR_WORKFLOW_METALLIC_ROUGHNESS);
-                        pushConstBlockMaterial.baseColorFactor = primitive->material.baseColorFactor;
-                        pushConstBlockMaterial.metallicFactor = primitive->material.metallicFactor;
-                        pushConstBlockMaterial.roughnessFactor = primitive->material.roughnessFactor;
-                        pushConstBlockMaterial.PhysicalDescriptorTextureSet = primitive->material.metallicRoughnessTexture != nullptr ? primitive->material.texCoordSets.metallicRoughness : -1;
-                        pushConstBlockMaterial.colorTextureSet = primitive->material.baseColorTexture != nullptr ? primitive->material.texCoordSets.baseColor : -1;
-                    }
-
-                    if (primitive->material.pbrWorkflows.specularGlossiness) {
-                        // Specular glossiness workflow
-                        pushConstBlockMaterial.workflow = static_cast<float>(PBR_WORKFLOW_SPECULAR_GLOSINESS);
-                        pushConstBlockMaterial.PhysicalDescriptorTextureSet = primitive->material.extension.specularGlossinessTexture != nullptr ? primitive->material.texCoordSets.specularGlossiness : -1;
-                        pushConstBlockMaterial.colorTextureSet = primitive->material.extension.diffuseTexture != nullptr ? primitive->material.texCoordSets.baseColor : -1;
-                        pushConstBlockMaterial.diffuseFactor = primitive->material.extension.diffuseFactor;
-                        pushConstBlockMaterial.specularFactor = glm::vec4(primitive->material.extension.specularFactor, 1.0f);
-                    }
-
-                    vkCmdPushConstants(commandBuffers[cbIndex], m_pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstBlockMaterial), &pushConstBlockMaterial);
-
-                    if (primitive->hasIndices) {
-                        vkCmdDrawIndexed(commandBuffers[cbIndex], primitive->indexCount, 1, primitive->firstIndex, 0, 0);
-                    }
-                    else {
-                        vkCmdDraw(commandBuffers[cbIndex], primitive->vertexCount, 1, 0, 0);
-                    }
-                }
-            }
-        };
-        for (auto child : node->children) {
-            renderNode(child, cbIndex, alphaMode);
-        }
     }
 
     void render() override {
@@ -1180,12 +956,6 @@ private:
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
 
-        // Model Mesh
-        //updateUniformBuffer();
-        //UniformBufferSet currentUB = uniformBuffers[imageIndex];
-        //memcpy(currentUB.scene.mapped, &shaderValuesScene, sizeof(shaderValuesScene));
-        //memcpy(currentUB.params.mapped, &shaderValuesParams, sizeof(shaderValuesParams));
-        //m_skybox.updateUniformBuffer();
         m_device->submitCommandBuffer(m_device->getGraphicsQueue(), &submitInfo, m_device->waitFences[m_device->getCurrentFrame()]);
 
         VkPresentInfoKHR presentInfo{};
@@ -1207,48 +977,12 @@ private:
             throw std::runtime_error("failed to present swap chain image!");
         }
         m_device->m_currentFrame = (m_device->m_currentFrame + 1) % 2;
-
-        // Update Animation
-        //if ((enable_animate) && (meshModel.animations.size() > 0)) {
-        //    animationTimer += frameTimer * animationSpeed;
-        //    if (animationTimer > meshModel.animations[animationIndex].end) {
-        //        animationTimer -= meshModel.animations[animationIndex].end;
-        //    }
-        //    meshModel.updateAnimation(animationIndex, animationTimer);
-        //}
-        //updateUniformBuffer();
     }
 
     void destroy() {
-        gui->destroy();
-        meshModel.destroy();
-        emptyTexture.destroy(m_device->getDevice());
-        vkDestroySampler(m_device->getDevice(), m_defaultSampler, nullptr);
-        vkDestroyDescriptorSetLayout(m_device->getDevice(), descriptorSetLayouts.scene, nullptr);
-        vkDestroyDescriptorSetLayout(m_device->getDevice(), descriptorSetLayouts.materials, nullptr);
-        vkDestroyDescriptorSetLayout(m_device->getDevice(), descriptorSetLayouts.node, nullptr);
-
-        for (auto ubo : uniformBuffers) {
-            vkDestroyBuffer(m_device->getDevice(), ubo.scene.buffer, nullptr);
-            vkDestroyBuffer(m_device->getDevice(), ubo.params.buffer, nullptr);
-            vkDestroyBuffer(m_device->getDevice(), ubo.debug.buffer, nullptr);
-        }
-        vkDestroyPipeline(m_device->getDevice(), pipelines.solid, nullptr);
-        vkDestroyPipeline(m_device->getDevice(), pipelines.enable_wireframe, nullptr);
-        vkDestroyPipelineLayout(m_device->getDevice(), m_pipelineLayout, nullptr);
     }
 
     void updateGUI() {
-        ImGui::Begin("Scene Settings");
-        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-        ImGui::Text("Frame Time %.2f", frameTimer);
-        ImGui::Checkbox("Enable Animation Update", &enable_animate);
-        if (enable_animate) {
-            ImGui::Checkbox("Enable slerp", &enable_slerp);
-            ImGui::SliderFloat("Animation Speed", &animationSpeed, 0.1f, 10.0f);
-        }
-        ImGui::Checkbox("Show Wireframe", &enable_wireframe);
-        ImGui::End();
     }
 
     void updateHierarchy(vkglTF::Node* node, std::function<void()> updateFunc) {
@@ -1271,13 +1005,6 @@ private:
 
     void createAccelerationStructureBuffer(AccelerationStructure& accelerationStructure, VkAccelerationStructureBuildSizesInfoKHR buildSizeInfo)
     {
-        //accelerationStructure.buffer = std::make_unique<Buffer>(buffer::createBuffer(
-        //    m_device->getDevice(),
-        //    buildSizeInfo.accelerationStructureSize,
-        //    VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-        //    VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR,
-        //    VK_SHARING_MODE_EXCLUSIVE
-        //));
         VkBufferCreateInfo bufferCreateInfo{};
         bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferCreateInfo.size = buildSizeInfo.accelerationStructureSize;
