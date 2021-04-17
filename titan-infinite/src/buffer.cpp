@@ -108,7 +108,7 @@ namespace buffer {
         }
 
         if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &buffer.memory) != VK_SUCCESS) {
-            throw std::runtime_error("failed to allocate uniform buffer memory!");
+            throw std::runtime_error("failed to allocate buffer memory!");
         }
 
         // If a pointer to the buffer data has been passed, map the buffer and copy over the data
@@ -127,8 +127,10 @@ namespace buffer {
         buffer.bufferSize = size;
         buffer.updateDescriptor();
 
-        vkBindBufferMemory(device->getDevice(), buffer.buffer, buffer.memory, 0);
-
+        
+        if (vkBindBufferMemory(device->getDevice(), buffer.buffer, buffer.memory, 0)) {
+            throw std::runtime_error("failed to bind buffer memory!");
+        }
         return buffer;
     }
 
