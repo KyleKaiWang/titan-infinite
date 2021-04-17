@@ -248,16 +248,21 @@ private:
     {
         storage_image.width = m_window->getWidth();
         storage_image.height = m_window->getHeight();
-        storage_image.image = m_device->createImage(m_device->getDevice(),
-            0,
-            VK_IMAGE_TYPE_2D,
-            VK_FORMAT_B8G8R8A8_UNORM,
-            { storage_image.width,  storage_image.height, 1 },
-            1,
-            1,
-            VK_SAMPLE_COUNT_1_BIT,
-            VK_IMAGE_TILING_OPTIMAL,
-            VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
+
+        VkImageCreateInfo imageInfo{};
+        imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imageInfo.imageType = VK_IMAGE_TYPE_2D;
+        imageInfo.format = m_device->getSwapChainImageFormat();
+        imageInfo.extent.width = storage_image.width;
+        imageInfo.extent.height = storage_image.height;
+        imageInfo.extent.depth = 1;
+        imageInfo.mipLevels = 1;
+        imageInfo.arrayLayers = 1;
+        imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        VK_CHECK_RESULT(vkCreateImage(m_device->getDevice(), &imageInfo, nullptr, &storage_image.image));
 
         VkMemoryRequirements memory_requirements;
         vkGetImageMemoryRequirements(m_device->getDevice(), storage_image.image, &memory_requirements);
@@ -829,7 +834,7 @@ private:
             // Prepare ray tracing output image as transfer source
             texture::setImageLayout(
                 currentCB,
-                m_device->getSwapChainimages()[i],
+                storage_image.image,
                 VK_IMAGE_LAYOUT_GENERAL,
                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                 VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
@@ -865,7 +870,7 @@ private:
             // Transition ray tracing output image back to general layout
             texture::setImageLayout(
                 currentCB,
-                m_device->getSwapChainimages()[i],
+                storage_image.image,
                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                 VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
