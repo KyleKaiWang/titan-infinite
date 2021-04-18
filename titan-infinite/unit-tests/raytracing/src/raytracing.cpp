@@ -109,7 +109,7 @@ public:
         enabled_acceleration_structure_features.accelerationStructure = VK_TRUE;
         enabled_acceleration_structure_features.pNext = &enabled_ray_tracing_pipeline_features;
 
-        m_device->m_deviceCreatepNextChain = &enabled_acceleration_structure_features;
+        m_device->m_lastRequestedExtensionFeature = &enabled_acceleration_structure_features;
     }
 
 private:
