@@ -6,7 +6,7 @@
 
 #pragma once
 
-#define VK_CHECK_RESULT(f)																				\
+#define VK_CHECK(f)																				\
 {																										\
 	VkResult res = (f);																					\
 	if (res != VK_SUCCESS)																				\
@@ -124,7 +124,7 @@ namespace vkHelper {
         return buffer;
     }
 
-    inline std::string getExtension(const std::string& filename)
+    inline std::string getFileExtension(const std::string& filename)
     {
         auto dot_pos = filename.find_last_of('.');
         if (dot_pos == std::string::npos) {

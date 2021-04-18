@@ -70,7 +70,7 @@ vkglTF::Mesh::Mesh(Device* device, glm::mat4 matrix) {
 		&uniformBuffer.memory,
 		&uniformBlock
 		);
-	VK_CHECK_RESULT(vkMapMemory(device->getDevice(), uniformBuffer.memory, 0, sizeof(uniformBlock), 0, &uniformBuffer.mapped));
+	VK_CHECK(vkMapMemory(device->getDevice(), uniformBuffer.memory, 0, sizeof(uniformBlock), 0, &uniformBuffer.mapped));
 	uniformBuffer.descriptor = { uniformBuffer.buffer, 0, sizeof(uniformBlock) };
 };
 
@@ -555,15 +555,15 @@ TextureObject VulkanglTFModel::fromglTfImage(tinygltf::Image& gltfimage, Device*
 	bufferCreateInfo.size = bufferSize;
 	bufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 	bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	VK_CHECK_RESULT(vkCreateBuffer(device->getDevice(), &bufferCreateInfo, nullptr, &stagingBuffer));
+	VK_CHECK(vkCreateBuffer(device->getDevice(), &bufferCreateInfo, nullptr, &stagingBuffer));
 	vkGetBufferMemoryRequirements(device->getDevice(), stagingBuffer, &memReqs);
 	memAllocInfo.allocationSize = memReqs.size;
 	memAllocInfo.memoryTypeIndex = device->findMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-	VK_CHECK_RESULT(vkAllocateMemory(device->getDevice(), &memAllocInfo, nullptr, &stagingMemory));
-	VK_CHECK_RESULT(vkBindBufferMemory(device->getDevice(), stagingBuffer, stagingMemory, 0));
+	VK_CHECK(vkAllocateMemory(device->getDevice(), &memAllocInfo, nullptr, &stagingMemory));
+	VK_CHECK(vkBindBufferMemory(device->getDevice(), stagingBuffer, stagingMemory, 0));
 
 	uint8_t* data;
-	VK_CHECK_RESULT(vkMapMemory(device->getDevice(), stagingMemory, 0, memReqs.size, 0, (void**)&data));
+	VK_CHECK(vkMapMemory(device->getDevice(), stagingMemory, 0, memReqs.size, 0, (void**)&data));
 	memcpy(data, buffer, bufferSize);
 	vkUnmapMemory(device->getDevice(), stagingMemory);
 
@@ -580,12 +580,12 @@ TextureObject VulkanglTFModel::fromglTfImage(tinygltf::Image& gltfimage, Device*
 	imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	imageCreateInfo.extent = { texObj.width, texObj.height, 1 };
 	imageCreateInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-	VK_CHECK_RESULT(vkCreateImage(device->getDevice(), &imageCreateInfo, nullptr, &texObj.image));
+	VK_CHECK(vkCreateImage(device->getDevice(), &imageCreateInfo, nullptr, &texObj.image));
 	vkGetImageMemoryRequirements(device->getDevice(), texObj.image, &memReqs);
 	memAllocInfo.allocationSize = memReqs.size;
 	memAllocInfo.memoryTypeIndex = device->findMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-	VK_CHECK_RESULT(vkAllocateMemory(device->getDevice(), &memAllocInfo, nullptr, &texObj.image_memory));
-	VK_CHECK_RESULT(vkBindImageMemory(device->getDevice(), texObj.image, texObj.image_memory, 0));
+	VK_CHECK(vkAllocateMemory(device->getDevice(), &memAllocInfo, nullptr, &texObj.image_memory));
+	VK_CHECK(vkBindImageMemory(device->getDevice(), texObj.image, texObj.image_memory, 0));
 
 	VkCommandBuffer copyCmd = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
 
@@ -718,7 +718,7 @@ TextureObject VulkanglTFModel::fromglTfImage(tinygltf::Image& gltfimage, Device*
 	samplerInfo.maxLod = (float)texObj.mipLevels;
 	samplerInfo.maxAnisotropy = 8.0f;
 	samplerInfo.anisotropyEnable = VK_TRUE;
-	VK_CHECK_RESULT(vkCreateSampler(device->getDevice(), &samplerInfo, nullptr, &texObj.sampler));
+	VK_CHECK(vkCreateSampler(device->getDevice(), &samplerInfo, nullptr, &texObj.sampler));
 
 	VkImageViewCreateInfo viewInfo{};
 	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -729,7 +729,7 @@ TextureObject VulkanglTFModel::fromglTfImage(tinygltf::Image& gltfimage, Device*
 	viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 	viewInfo.subresourceRange.layerCount = 1;
 	viewInfo.subresourceRange.levelCount = texObj.mipLevels;
-	VK_CHECK_RESULT(vkCreateImageView(device->getDevice(), &viewInfo, nullptr, &texObj.view));
+	VK_CHECK(vkCreateImageView(device->getDevice(), &viewInfo, nullptr, &texObj.view));
 
 	return texObj;
 }

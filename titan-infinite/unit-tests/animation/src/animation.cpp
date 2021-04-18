@@ -22,12 +22,18 @@
 
 class Test_Animiation : public App {
 public:
-    Test_Animiation() {}
+    Test_Animiation() {
+        vkHelper::addDeviceExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    }
     ~Test_Animiation() {
         delete m_camera;
         delete m_device;
         m_window->destroy();
         delete m_window;
+    }
+
+    void getEnabledFeatures() override {
+
     }
 
     bool init() override { 
@@ -39,7 +45,7 @@ public:
         
     }
 
-    void run() {
+    void run() override {
         int64_t lastCounter = getUSec();
         while (!m_window->getWindowShouldClose()) {
             int64_t counter = getUSec();
@@ -177,9 +183,11 @@ private:
         m_window->setCamera(m_camera);
         m_window->create(WIDTH, HEIGHT);
 
+        std::function<void()> getfeatures = [&]() { getEnabledFeatures(); };
+
         // Physical, Logical Device and Surface
         m_device = new Device();
-        m_device->create(m_window);
+        m_device->create(m_window, vkHelper::getInstanceExtensions(), vkHelper::getDeviceExtensions(), getfeatures);
 
         // Gui
         gui = new Gui();
@@ -679,8 +687,8 @@ private:
     }
 
     void drawFrame() {
-        vkWaitForFences(m_device->getDevice(), 1, &m_device->waitFences[m_device->getCurrentFrame()], VK_TRUE, UINT64_MAX);
-        vkResetFences(m_device->getDevice(), 1, &m_device->waitFences[m_device->getCurrentFrame()]);
+        vkWaitForFences(m_device->getDevice(), 1, &m_device->m_waitFences[m_device->getCurrentFrame()], VK_TRUE, UINT64_MAX);
+        vkResetFences(m_device->getDevice(), 1, &m_device->m_waitFences[m_device->getCurrentFrame()]);
 
         uint32_t imageIndex;
         VkResult result = vkAcquireNextImageKHR(m_device->getDevice(), m_device->getSwapChain(), UINT64_MAX, m_device->m_imageAvailableSemaphores[m_device->getCurrentFrame()], VK_NULL_HANDLE, &imageIndex);
@@ -695,7 +703,7 @@ private:
         if (m_device->m_imagesInFlight[imageIndex] != VK_NULL_HANDLE) {
             vkWaitForFences(m_device->getDevice(), 1, &m_device->m_imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX);
         }
-        m_device->m_imagesInFlight[imageIndex] = m_device->waitFences[m_device->getCurrentFrame()];
+        m_device->m_imagesInFlight[imageIndex] = m_device->m_waitFences[m_device->getCurrentFrame()];
 
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -718,7 +726,7 @@ private:
         memcpy(currentUB.scene.mapped, &shaderValuesScene, sizeof(shaderValuesScene));
         memcpy(currentUB.params.mapped, &shaderValuesParams, sizeof(shaderValuesParams));
         m_skybox.updateUniformBuffer();
-        m_device->submitCommandBuffer(m_device->getGraphicsQueue(), &submitInfo, m_device->waitFences[m_device->getCurrentFrame()]);
+        m_device->submitCommandBuffer(m_device->getGraphicsQueue(), &submitInfo, m_device->m_waitFences[m_device->getCurrentFrame()]);
 
         VkPresentInfoKHR presentInfo{};
         presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;

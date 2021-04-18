@@ -107,9 +107,9 @@ namespace texture {
             texObj.image,
             VK_IMAGE_LAYOUT_UNDEFINED,
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            subresourceRange,
             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
             VK_PIPELINE_STAGE_TRANSFER_BIT,
-            subresourceRange,
             0,
             VK_ACCESS_TRANSFER_WRITE_BIT);
 
@@ -145,19 +145,6 @@ namespace texture {
 
         /* Set the layout for the texture image from DESTINATION_OPTIMAL to SHADER_READ_ONLY */
         texObj.image_layout = imageLayout;
-
-        // 
-        //setImageLayout(
-        //    copyCmd,
-        //    texObj.image,
-        //    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        //    texObj.image_layout,
-        //    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-        //    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-        //    subresourceRange,
-        //    VK_ACCESS_TRANSFER_WRITE_BIT,
-        //    VK_ACCESS_TRANSFER_READ_BIT
-        //);
 
         device->flushCommandBuffer(copyCmd, device->getGraphicsQueue(), true);
 
@@ -322,9 +309,9 @@ namespace texture {
             texObj.image,
             VK_IMAGE_LAYOUT_UNDEFINED,
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
             subresourceRange,
+            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
             0,
             VK_ACCESS_TRANSFER_WRITE_BIT);
 
@@ -345,9 +332,9 @@ namespace texture {
             texObj.image,
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
             texObj.image_layout,
-            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
             subresourceRange,
+            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
             VK_ACCESS_TRANSFER_WRITE_BIT,
             VK_ACCESS_TRANSFER_READ_BIT
         );
@@ -510,8 +497,9 @@ namespace texture {
             texObj.image,
             VK_IMAGE_LAYOUT_UNDEFINED,
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-            { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
+            { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 },
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 
+            VK_PIPELINE_STAGE_TRANSFER_BIT
         );
 
         // Copy mip levels from staging buffer
@@ -530,9 +518,9 @@ namespace texture {
             texObj.image,
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
             texObj.image_layout,
+            { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 },
             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
-            { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
+            VK_PIPELINE_STAGE_TRANSFER_BIT
         );
 
         device->flushCommandBuffer(copyCmd, copyQueue);
@@ -615,9 +603,9 @@ namespace texture {
         VkImage image,
         VkImageLayout old_image_layout,
         VkImageLayout new_image_layout,
+        VkImageSubresourceRange subresource_range,
         VkPipelineStageFlags src_stages,
         VkPipelineStageFlags dest_stages,
-        VkImageSubresourceRange subresource_range,
         VkAccessFlags src_access_mask,
         VkAccessFlags dst_access_mask) {
 
@@ -884,7 +872,7 @@ namespace texture {
     {
         TextureObject texObj{};
         auto data = vkHelper::readFile(filename);
-        auto extension = vkHelper::getExtension(filename);
+        auto extension = vkHelper::getFileExtension(filename);
 
         if (extension == "png" || extension == "jpg")
         {

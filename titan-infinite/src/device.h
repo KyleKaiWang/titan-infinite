@@ -31,6 +31,14 @@ struct Device {
     Device();
     ~Device();
 
+    std::vector<VkPhysicalDevice> gpus;
+
+    std::vector<const char*> m_enabledExtensions{};
+    std::vector<const char*> m_enabledInstanceExtensions{};
+
+    // Holds the extension feature structures, we use a map to retain an order of requested structures
+    std::map<VkStructureType, std::shared_ptr<void>> extension_features;
+
     // Swapchain
     VkSwapchainKHR m_swapChain;
     VkFormat m_swapChainImageFormat;
@@ -49,7 +57,7 @@ struct Device {
 
     // Synchronization
     std::vector<VkFence>       m_imagesInFlight;
-    std::vector<VkFence>       waitFences;
+    std::vector<VkFence>       m_waitFences;
     std::vector<VkSemaphore>   m_imageAvailableSemaphores;
     std::vector<VkSemaphore>   m_renderFinishedSemaphores;
 
@@ -89,10 +97,9 @@ struct Device {
     VkDebugUtilsMessengerEXT debugMessenger;
     VkPhysicalDeviceMemoryProperties m_memoryProperties;
 
-    std::vector<const char*> m_enabledExtensions{};
-    std::vector<const char*> m_enabledInstanceExtensions{};
-
-    void* m_deviceCreatepNextChain = nullptr;
+    //void* m_deviceCreatepNextChain{ nullptr };
+    void* m_lastRequestedExtensionFeature{ nullptr };
+    void* getPhysicalDeviceExtensionFeatureChain() const { return m_lastRequestedExtensionFeature; }
 
     VkDevice getDevice() const { return m_device; }
     VkPhysicalDevice getPhysicalDevice() const { return m_physicalDevice; }
@@ -190,7 +197,56 @@ struct Device {
     std::vector<VkDescriptorSet> createDescriptorSets(const VkDevice& device, const VkDescriptorPool& descriptorPool, const std::vector<VkDescriptorSetLayout>& descriptorSetLayout);
     VkDescriptorSet createDescriptorSet(const VkDevice& device, const VkDescriptorPool& descriptorPool, const VkDescriptorSetLayout& descriptorSetLayout);
 
-    std::vector<const char*> getRequiredExtensions();
+    /**
+     * @brief Requests a third party extension to be used by the framework
+     *
+     *        To have the features enabled, this function must be called before the logical device
+     *        is created. To do this request sample specific features inside
+     *        VulkanSample::request_gpu_features(vkb::PhysicalDevice &gpu).
+     *
+     *        If the feature extension requires you to ask for certain features to be enabled, you can
+     *        modify the struct returned by this function, it will propegate the changes to the logical
+     *        device.
+     * @param type The VkStructureType for the extension you are requesting
+     * @returns The extension feature struct
+     */
+    template <typename T>
+    T& request_extension_features(VkStructureType type)
+    {
+        // We cannot request extension features if the physical device properties 2 instance extension isnt enabled
+        if (!m_instance.is_enabled(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME)) {
+            throw std::runtime_error("Couldn't request feature from device as " + std::string(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME) + " isn't enabled!");
+        }
+
+        // If the type already exists in the map, return a casted pointer to get the extension feature struct
+        auto extension_features_it = extension_features.find(type);
+        if (extension_features_it != extension_features.end()) {
+            return *static_cast<T*>(extension_features_it->second.get());
+        }
+
+        // Get the extension feature
+        VkPhysicalDeviceFeatures2KHR physical_device_features{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR };
+        T                            extension{ type };
+        physical_device_features.pNext = &extension;
+        vkGetPhysicalDeviceFeatures2KHR(m_physicalDevice, &physical_device_features);
+
+        // Insert the extension feature into the extension feature map so its ownership is held
+        extension_features.insert({ type, std::make_shared<T>(extension) });
+
+        // Pull out the dereferenced void pointer, we can assume its type based on the template
+        auto* extension_ptr = static_cast<T*>(extension_features.find(type)->second.get());
+
+        // If an extension feature has already been requested, we shift the linked list down by one
+        // Making this current extension the new base pointer
+        if (m_lastRequestedExtensionFeature)
+        {
+            extension_ptr->pNext = m_lastRequestedExtensionFeature;
+        }
+        m_lastRequestedExtensionFeature = extension_ptr;
+
+        return *extension_ptr;
+    }
+
     void pickPhysicalDevice();
     bool checkDeviceExtensionSupport(VkPhysicalDevice device);
     bool checkValidationLayerSupport();

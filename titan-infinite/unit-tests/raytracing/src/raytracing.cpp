@@ -262,7 +262,7 @@ private:
         imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
         imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
         imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        VK_CHECK_RESULT(vkCreateImage(m_device->getDevice(), &imageInfo, nullptr, &storage_image.image));
+        VK_CHECK(vkCreateImage(m_device->getDevice(), &imageInfo, nullptr, &storage_image.image));
 
         VkMemoryRequirements memory_requirements;
         vkGetImageMemoryRequirements(m_device->getDevice(), storage_image.image, &memory_requirements);
@@ -270,13 +270,14 @@ private:
         memory_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         memory_allocate_info.allocationSize = memory_requirements.size;
         memory_allocate_info.memoryTypeIndex = m_device->findMemoryType(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        VK_CHECK_RESULT(vkAllocateMemory(m_device->getDevice(), &memory_allocate_info, nullptr, &storage_image.memory));
-        VK_CHECK_RESULT(vkBindImageMemory(m_device->getDevice(), storage_image.image, storage_image.memory, 0));
+        VK_CHECK(vkAllocateMemory(m_device->getDevice(), &memory_allocate_info, nullptr, &storage_image.memory));
+        VK_CHECK(vkBindImageMemory(m_device->getDevice(), storage_image.image, storage_image.memory, 0));
 
-        storage_image.view = m_device->createImageView(m_device->getDevice(),
+        storage_image.view = m_device->createImageView(
+            m_device->getDevice(),
             storage_image.image,
             VK_IMAGE_VIEW_TYPE_2D,
-            VK_FORMAT_B8G8R8A8_UNORM,
+            m_device->getSwapChainImageFormat(),
             { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G,VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A },
             { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
 
@@ -287,9 +288,8 @@ private:
             storage_image.image,
             VK_IMAGE_LAYOUT_UNDEFINED,
             VK_IMAGE_LAYOUT_GENERAL,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
-            { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
+            { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
+        );
         m_device->flushCommandBuffer(command_buffer, m_device->getGraphicsQueue());
     }
 
@@ -570,14 +570,14 @@ private:
         layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         layout_info.bindingCount = static_cast<uint32_t>(bindings.size());
         layout_info.pBindings = bindings.data();
-        VK_CHECK_RESULT(vkCreateDescriptorSetLayout(m_device->getDevice(), &layout_info, nullptr, &descriptor_set_layout));
+        VK_CHECK(vkCreateDescriptorSetLayout(m_device->getDevice(), &layout_info, nullptr, &descriptor_set_layout));
 
         VkPipelineLayoutCreateInfo pipeline_layout_create_info{};
         pipeline_layout_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         pipeline_layout_create_info.setLayoutCount = 1;
         pipeline_layout_create_info.pSetLayouts = &descriptor_set_layout;
 
-        VK_CHECK_RESULT(vkCreatePipelineLayout(m_device->getDevice(), &pipeline_layout_create_info, nullptr, &pipeline_layout));
+        VK_CHECK(vkCreatePipelineLayout(m_device->getDevice(), &pipeline_layout_create_info, nullptr, &pipeline_layout));
 
         /*
             Setup ray tracing shader groups
@@ -649,7 +649,7 @@ private:
         raytracing_pipeline_create_info.pGroups = shader_groups.data();
         raytracing_pipeline_create_info.maxPipelineRayRecursionDepth = 1;
         raytracing_pipeline_create_info.layout = pipeline_layout;
-        VK_CHECK_RESULT(vkCreateRayTracingPipelinesKHR(m_device->getDevice(), VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &raytracing_pipeline_create_info, nullptr, &pipeline));
+        VK_CHECK(vkCreateRayTracingPipelinesKHR(m_device->getDevice(), VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &raytracing_pipeline_create_info, nullptr, &pipeline));
     }
 
     void initShaderBindingTables()
@@ -674,7 +674,7 @@ private:
 
         // Copy the pipeline's shader handles into a host buffer
         std::vector<uint8_t> shader_handle_storage(sbt_size);
-        VK_CHECK_RESULT(vkGetRayTracingShaderGroupHandlesKHR(m_device->getDevice(), pipeline, 0, group_count, sbt_size, shader_handle_storage.data()));
+        VK_CHECK(vkGetRayTracingShaderGroupHandlesKHR(m_device->getDevice(), pipeline, 0, group_count, sbt_size, shader_handle_storage.data()));
 
         // Copy the shader handles from the host buffer to the binding tables
         memcpy(raygen_shader_binding_table.mapped, shader_handle_storage.data(), handle_size);
@@ -775,7 +775,7 @@ private:
         for (int32_t i = 0; i < m_device->getCommandBuffers().size(); ++i)
         {
             VkCommandBuffer currentCB = m_device->m_commandBuffers[i];
-            VK_CHECK_RESULT(vkBeginCommandBuffer(currentCB, &command_buffer_begin_info));
+            VK_CHECK(vkBeginCommandBuffer(currentCB, &command_buffer_begin_info));
 
             /*
                 Setup the strided device address regions pointing at the shader identifiers in the shader binding table
@@ -826,8 +826,6 @@ private:
                 m_device->getSwapChainimages()[i],
                 VK_IMAGE_LAYOUT_UNDEFINED,
                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                VK_PIPELINE_STAGE_TRANSFER_BIT,
                 subresource_range
             );
 
@@ -837,8 +835,6 @@ private:
                 storage_image.image,
                 VK_IMAGE_LAYOUT_GENERAL,
                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                VK_PIPELINE_STAGE_TRANSFER_BIT,
                 subresource_range
             );
 
@@ -862,8 +858,6 @@ private:
                 m_device->getSwapChainimages()[i],
                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                 VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                VK_PIPELINE_STAGE_TRANSFER_BIT,
                 subresource_range
             );
 
@@ -873,11 +867,9 @@ private:
                 storage_image.image,
                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                 VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                VK_PIPELINE_STAGE_TRANSFER_BIT,
                 subresource_range
             );
-            VK_CHECK_RESULT(vkEndCommandBuffer(currentCB));
+            VK_CHECK(vkEndCommandBuffer(currentCB));
         }
     }
 
@@ -896,12 +888,6 @@ private:
         updateUniformBuffer();
     }
 
-    float ParametricBlend(float t)
-    {
-        float sqt = t * t;
-        return sqt / (2.0f * (sqt - t) + 1.0f);
-    }
-
     void updateUniformBuffer() {
         uniform_data.proj_inverse = glm::inverse(m_camera->matrices.perspective);
         uniform_data.view_inverse = glm::inverse(m_camera->matrices.view);
@@ -911,7 +897,7 @@ private:
     void render() override {
         auto tStart = std::chrono::high_resolution_clock::now();
 
-        buildCommandBuffers();
+        //buildCommandBuffers();
         drawFrame();
         frameCounter++;
         auto tEnd = std::chrono::high_resolution_clock::now();
@@ -928,8 +914,8 @@ private:
     }
 
     void drawFrame() {
-        vkWaitForFences(m_device->getDevice(), 1, &m_device->waitFences[m_device->getCurrentFrame()], VK_TRUE, UINT64_MAX);
-        vkResetFences(m_device->getDevice(), 1, &m_device->waitFences[m_device->getCurrentFrame()]);
+        vkWaitForFences(m_device->getDevice(), 1, &m_device->m_waitFences[m_device->getCurrentFrame()], VK_TRUE, UINT64_MAX);
+        vkResetFences(m_device->getDevice(), 1, &m_device->m_waitFences[m_device->getCurrentFrame()]);
 
         uint32_t imageIndex;
         VkResult result = vkAcquireNextImageKHR(m_device->getDevice(), m_device->getSwapChain(), UINT64_MAX, m_device->m_imageAvailableSemaphores[m_device->getCurrentFrame()], VK_NULL_HANDLE, &imageIndex);
@@ -944,7 +930,7 @@ private:
         if (m_device->m_imagesInFlight[imageIndex] != VK_NULL_HANDLE) {
             vkWaitForFences(m_device->getDevice(), 1, &m_device->m_imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX);
         }
-        m_device->m_imagesInFlight[imageIndex] = m_device->waitFences[m_device->getCurrentFrame()];
+        m_device->m_imagesInFlight[imageIndex] = m_device->m_waitFences[m_device->getCurrentFrame()];
 
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -961,7 +947,7 @@ private:
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
 
-        m_device->submitCommandBuffer(m_device->getGraphicsQueue(), &submitInfo, m_device->waitFences[m_device->getCurrentFrame()]);
+        m_device->submitCommandBuffer(m_device->getGraphicsQueue(), &submitInfo, m_device->m_waitFences[m_device->getCurrentFrame()]);
 
         VkPresentInfoKHR presentInfo{};
         presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -990,13 +976,6 @@ private:
     void updateGUI() {
     }
 
-    void updateHierarchy(vkglTF::Node* node, std::function<void()> updateFunc) {
-        updateFunc();
-        for (auto child : node->children) {
-            updateHierarchy(child, updateFunc);
-        }
-    }
-
     /*
         Gets the device address from a buffer that's needed in many places during the ray tracing setup
     */
@@ -1014,7 +993,7 @@ private:
         bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferCreateInfo.size = buildSizeInfo.accelerationStructureSize;
         bufferCreateInfo.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-        VK_CHECK_RESULT(vkCreateBuffer(m_device->getDevice(), &bufferCreateInfo, nullptr, &accelerationStructure.buffer.buffer));
+        VK_CHECK(vkCreateBuffer(m_device->getDevice(), &bufferCreateInfo, nullptr, &accelerationStructure.buffer.buffer));
         VkMemoryRequirements memoryRequirements{};
         vkGetBufferMemoryRequirements(m_device->getDevice(), accelerationStructure.buffer.buffer, &memoryRequirements);
         VkMemoryAllocateFlagsInfo memoryAllocateFlagsInfo{};
@@ -1025,8 +1004,8 @@ private:
         memoryAllocateInfo.pNext = &memoryAllocateFlagsInfo;
         memoryAllocateInfo.allocationSize = memoryRequirements.size;
         memoryAllocateInfo.memoryTypeIndex = m_device->findMemoryType(memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        VK_CHECK_RESULT(vkAllocateMemory(m_device->getDevice(), &memoryAllocateInfo, nullptr, &accelerationStructure.buffer.memory));
-        VK_CHECK_RESULT(vkBindBufferMemory(m_device->getDevice(), accelerationStructure.buffer.buffer, accelerationStructure.buffer.memory, 0));
+        VK_CHECK(vkAllocateMemory(m_device->getDevice(), &memoryAllocateInfo, nullptr, &accelerationStructure.buffer.memory));
+        VK_CHECK(vkBindBufferMemory(m_device->getDevice(), accelerationStructure.buffer.buffer, accelerationStructure.buffer.memory, 0));
     }
 
     ScratchBuffer createScratchBuffer(VkDeviceSize size)
@@ -1037,7 +1016,7 @@ private:
         bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferCreateInfo.size = size;
         bufferCreateInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-        VK_CHECK_RESULT(vkCreateBuffer(m_device->getDevice(), &bufferCreateInfo, nullptr, &scratchBuffer.handle));
+        VK_CHECK(vkCreateBuffer(m_device->getDevice(), &bufferCreateInfo, nullptr, &scratchBuffer.handle));
 
         VkMemoryRequirements memoryRequirements{};
         vkGetBufferMemoryRequirements(m_device->getDevice(), scratchBuffer.handle, &memoryRequirements);
@@ -1051,8 +1030,8 @@ private:
         memoryAllocateInfo.pNext = &memoryAllocateFlagsInfo;
         memoryAllocateInfo.allocationSize = memoryRequirements.size;
         memoryAllocateInfo.memoryTypeIndex = m_device->findMemoryType(memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        VK_CHECK_RESULT(vkAllocateMemory(m_device->getDevice(), &memoryAllocateInfo, nullptr, &scratchBuffer.memory));
-        VK_CHECK_RESULT(vkBindBufferMemory(m_device->getDevice(), scratchBuffer.handle, scratchBuffer.memory, 0));
+        VK_CHECK(vkAllocateMemory(m_device->getDevice(), &memoryAllocateInfo, nullptr, &scratchBuffer.memory));
+        VK_CHECK(vkBindBufferMemory(m_device->getDevice(), scratchBuffer.handle, scratchBuffer.memory, 0));
 
         VkBufferDeviceAddressInfoKHR bufferDeviceAddressInfo{};
         bufferDeviceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
