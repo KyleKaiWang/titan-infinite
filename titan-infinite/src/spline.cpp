@@ -86,14 +86,14 @@ void Spline::init()
 		&buffers.interpolatedPoints.memory);
 
 	// Copy from staging buffers
-	VkCommandBuffer copyCmd_contorl = m_device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+	VkCommandBuffer copyCmd_contorl = m_device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, m_device->getCommandPool(), true);
 	VkBufferCopy copyRegion_contorl{};
 	copyRegion_contorl.size = m_controlPoints.size() * sizeof(glm::vec3);
 	vkCmdCopyBuffer(copyCmd_contorl, vertexStaging_control.buffer, buffers.controlPoints.buffer, 1, &copyRegion_contorl);
 	m_device->flushCommandBuffer(copyCmd_contorl, m_device->getGraphicsQueue());
 
 	// Copy from staging buffers
-	VkCommandBuffer copyCmd_interpolated = m_device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+	VkCommandBuffer copyCmd_interpolated = m_device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, m_device->getCommandPool(), true);
 	VkBufferCopy copyRegion_interpolated{};
 	copyRegion_interpolated.size = m_interpolatedPoints.size() * sizeof(glm::vec3);
 	vkCmdCopyBuffer(copyCmd_interpolated, vertexStaging_interpolated.buffer, buffers.interpolatedPoints.buffer, 1, &copyRegion_interpolated);

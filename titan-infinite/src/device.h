@@ -128,8 +128,8 @@ struct Device {
     VkDescriptorPool createDescriptorPool(const VkDevice& device, const std::vector<VkDescriptorPoolSize>& poolSizes, uint32_t maxSets);
     void destroyDescriptorPool();
 
-    std::vector<VkCommandBuffer> createCommandBuffers(const VkDevice& device, const VkCommandPool& commandPool, VkCommandBufferLevel level, uint32_t commandBufferCount);
-    VkCommandBuffer createCommandBuffer(VkCommandBufferLevel level, bool begin);
+    std::vector<VkCommandBuffer> createCommandBuffers(const VkDevice& device, VkCommandPool commandPool, VkCommandBufferLevel level, uint32_t commandBufferCount);
+    VkCommandBuffer createCommandBuffer(VkCommandBufferLevel level, VkCommandPool commandPool, bool begin = false);
     void submitCommandBuffer(const VkQueue& queue, const VkSubmitInfo* submitInfo, const VkFence& fence);
     void flushCommandBuffer(const VkCommandBuffer& commandBuffer, const VkQueue& queue, bool free = true);
     VkCommandBuffer beginImmediateCommandBuffer();
@@ -211,7 +211,7 @@ struct Device {
      * @returns The extension feature struct
      */
     template <typename T>
-    T& request_extension_features(VkStructureType type)
+    T& requestExtensionFeatures(VkStructureType type)
     {
         // We cannot request extension features if the physical device properties 2 instance extension isnt enabled
         if (!m_instance.is_enabled(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME)) {

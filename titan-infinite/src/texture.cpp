@@ -93,7 +93,7 @@ namespace texture {
         }
 
         // Use a separate command buffer for texture loading
-        VkCommandBuffer copyCmd = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+        VkCommandBuffer copyCmd = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, device->getCommandPool(), true);
 
         VkImageSubresourceRange subresourceRange{};
         subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -209,7 +209,7 @@ namespace texture {
         vkGetPhysicalDeviceFormatProperties(device->getPhysicalDevice(), format, &formatProps);
 
         // Use a separate command buffer for texture loading
-        VkCommandBuffer copyCmd = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+        VkCommandBuffer copyCmd = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, device->getCommandPool(), true);
 
         VkBuffer stage_buffer;
         VkDeviceMemory stage_buffer_memory;
@@ -407,7 +407,7 @@ namespace texture {
         memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         VkMemoryRequirements memReqs;
 
-        VkCommandBuffer copyCmd = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
+        VkCommandBuffer copyCmd = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, device->getCommandPool(), 1);
 
         VkBuffer stagingBuffer;
         VkDeviceMemory stagingMemory;
@@ -732,7 +732,7 @@ namespace texture {
             throw std::runtime_error("texture image format does not support linear blitting!");
         }
 
-        VkCommandBuffer commandBuffer = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+        VkCommandBuffer commandBuffer = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, device->getCommandPool(), true);
 
         VkImageMemoryBarrier barrier = {};
         barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;

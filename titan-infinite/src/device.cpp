@@ -246,9 +246,9 @@ void Device::createInstance() {
     VkApplicationInfo appInfo{};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     appInfo.pApplicationName = "Titan Infinite Renderer";
-    appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+    appInfo.applicationVersion = VK_MAKE_VERSION(1, 2, 0);
     appInfo.pEngineName = "Titan Infinite";
-    appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+    appInfo.engineVersion = VK_MAKE_VERSION(1, 2, 0);
     appInfo.apiVersion = VK_API_VERSION_1_2;
 
     VkInstanceCreateInfo createInfo{};
@@ -377,7 +377,7 @@ void Device::createFramebuffer() {
     }
 }
 
-std::vector<VkCommandBuffer> Device::createCommandBuffers(const VkDevice& device, const VkCommandPool& commandPool, VkCommandBufferLevel level, uint32_t commandBufferCount) {
+std::vector<VkCommandBuffer> Device::createCommandBuffers(const VkDevice& device, VkCommandPool commandPool, VkCommandBufferLevel level, uint32_t commandBufferCount) {
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.level = level;
@@ -391,12 +391,12 @@ std::vector<VkCommandBuffer> Device::createCommandBuffers(const VkDevice& device
     return std::move(commandBuffers);
 }
 
-VkCommandBuffer Device::createCommandBuffer(VkCommandBufferLevel level, bool begin)
+VkCommandBuffer Device::createCommandBuffer(VkCommandBufferLevel level, VkCommandPool commandPool, bool begin)
 {
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.level = level;
-    allocInfo.commandPool = getCommandPool();
+    allocInfo.commandPool = commandPool;
     allocInfo.commandBufferCount = 1;
     VkCommandBuffer cmdBuffer;
     if (vkAllocateCommandBuffers(getDevice(), &allocInfo, &cmdBuffer) != VK_SUCCESS) {

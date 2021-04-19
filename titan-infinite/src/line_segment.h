@@ -93,7 +93,7 @@ public:
 			&vertices.memory);
 
 		// Copy from staging buffers
-		VkCommandBuffer copyCmd = m_device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+		VkCommandBuffer copyCmd = m_device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, m_device->getCommandPool(), true);
 		VkBufferCopy copyRegion{};
 		copyRegion.size = vertice.size() * sizeof(glm::vec3);
 		vkCmdCopyBuffer(copyCmd, vertexStaging.buffer, vertices.buffer, 1, &copyRegion);

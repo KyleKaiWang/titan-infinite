@@ -414,7 +414,7 @@ void VulkanglTFModel::loadFromFile(const std::string& filename, Device* _device,
 		}
 
 		// Copy from staging buffers
-		VkCommandBuffer copyCmd = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+		VkCommandBuffer copyCmd = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, device->getCommandPool(), true);
 
 		VkBufferCopy copyRegion = {};
 
@@ -587,7 +587,7 @@ TextureObject VulkanglTFModel::fromglTfImage(tinygltf::Image& gltfimage, Device*
 	VK_CHECK(vkAllocateMemory(device->getDevice(), &memAllocInfo, nullptr, &texObj.image_memory));
 	VK_CHECK(vkBindImageMemory(device->getDevice(), texObj.image, texObj.image_memory, 0));
 
-	VkCommandBuffer copyCmd = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+	VkCommandBuffer copyCmd = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, device->getCommandPool(), true);
 
 	VkImageSubresourceRange subresourceRange = {};
 	subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -635,7 +635,7 @@ TextureObject VulkanglTFModel::fromglTfImage(tinygltf::Image& gltfimage, Device*
 	vkDestroyBuffer(device->getDevice(), stagingBuffer, nullptr);
 
 	// Generate the mip chain (glTF uses jpg and png, so we need to create this manually)
-	VkCommandBuffer blitCmd = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+	VkCommandBuffer blitCmd = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, device->getCommandPool(), true);
 	for (uint32_t i = 1; i < texObj.mipLevels; i++) {
 		VkImageBlit imageBlit{};
 
