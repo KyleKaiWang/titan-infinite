@@ -761,8 +761,8 @@ namespace texture {
             VkImageBlit region{};
             region.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level - 1, 0, 1 };
             region.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level,   0, 1 };
-            region.srcOffsets[1] = { int32_t(texture.width >> (level - 1)),  int32_t(texture.height >> (level - 1)), 1 };
-            region.dstOffsets[1] = { int32_t(texture.width >> (level)),  int32_t(texture.height >> (level)), 1 };
+            region.srcOffsets[1] = { texture.width > 1 ? int32_t(texture.width >> (level - 1)) : 1,  texture.height > 1 ? int32_t(texture.height >> (level - 1)) : 1, 1 };
+            region.dstOffsets[1] = { texture.width > 1 ? int32_t(texture.width >> (level)) : 1,  texture.height > 1 ? int32_t(texture.height >> (level)) : 1, 1 };
             vkCmdBlitImage(commandBuffer,
                 texture.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                 texture.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -901,6 +901,14 @@ namespace texture {
         }
         else if (extension == "ktx")
         {
+            gli::texture2d tex(gli::load(filename));
+            assert(!tex.empty());
+            texObj.data.resize(tex.size());
+            memcpy(&texObj.data[0], tex.data(), tex.size());
+            texObj.width = static_cast<uint32_t>(tex.extent().x);
+            texObj.height = static_cast<uint32_t>(tex.extent().y);
+            texObj.format = VK_FORMAT_R8G8B8A8_UNORM;
+            texObj.mipLevels = tex.levels();
         }
         return texObj;
     }
