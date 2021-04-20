@@ -91,6 +91,7 @@ struct Device {
 
     VkQueue m_graphicsQueue;
     VkQueue m_presentQueue;
+    VkQueue m_computeQueue;
     VkPipelineCache m_pipelineCache;
     const uint32_t renderAhead = 2;
 
@@ -107,6 +108,7 @@ struct Device {
     VkSurfaceKHR getSurface() const { return m_surface; }
     VkQueue getGraphicsQueue() const { return m_graphicsQueue; }
     VkQueue getPresentQueue() const { return m_presentQueue; }
+    VkQueue getComputeQueue() const { return m_computeQueue; }
     Window* getWindow() { return m_window; }
     VkRenderPass getRenderPass() { return m_renderPass; }
     const Depthbuffer& getDepthbuffer() const { return m_depthbuffer; }

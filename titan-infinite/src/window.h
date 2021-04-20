@@ -46,7 +46,7 @@ struct Window {
     void setCamera(Camera* camera) { m_camera = camera; }
     Camera* getCamera() { return m_camera; }
     SceneSettings getSceneSettings() { return m_sceneSettings; }
-    std::pair<double, double> getCurCursorPos() { return { m_currCursorX, m_currCursorY }; }
+    glm::vec2 getCurCursorPos() { return glm::vec2(m_currCursorX, m_currCursorY); }
 
     void create(uint32_t width, uint32_t height) {
         
