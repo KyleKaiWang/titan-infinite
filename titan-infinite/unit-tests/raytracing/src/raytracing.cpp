@@ -53,7 +53,7 @@ public:
             vkHelper::addDeviceExtension(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
             vkHelper::addDeviceExtension(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
             vkHelper::addDeviceExtension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
-            vkHelper::addDeviceExtension("VK_KHR_ray_query");
+            vkHelper::addDeviceExtension(VK_KHR_RAY_QUERY_EXTENSION_NAME);
             
             // Required for VK_KHR_ray_tracing_pipeline
             vkHelper::addDeviceExtension(VK_KHR_SPIRV_1_4_EXTENSION_NAME);
@@ -233,10 +233,10 @@ private:
             vkCreateRayTracingPipelinesKHR = reinterpret_cast<PFN_vkCreateRayTracingPipelinesKHR>(vkGetDeviceProcAddr(m_device->getDevice(), "vkCreateRayTracingPipelinesKHR"));
 
             // Create the acceleration structures used to render the ray traced scene
-            initStorageImage();
-            initUniformBuffers();
             initButtomLevelAccelerationStructure();
             initTopLevelAccelerationStructure();
+            initStorageImage();
+            initUniformBuffers();
             initRayTracingPipeline();
             initShaderBindingTables();
             initDescriptorSets();
@@ -281,7 +281,7 @@ private:
             { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G,VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A },
             { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
 
-        VkCommandBuffer command_buffer = m_device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+        VkCommandBuffer command_buffer = m_device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, m_device->getCommandPool(), true);
         
         texture::setImageLayout(
             command_buffer,
@@ -416,7 +416,7 @@ private:
 
         // Build the acceleration structure on the device via a one-time command buffer submission
         // Some implementations may support acceleration structure building on the host (VkPhysicalDeviceAccelerationStructureFeaturesKHR->accelerationStructureHostCommands), but we prefer device builds
-        VkCommandBuffer command_buffer = m_device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+        VkCommandBuffer command_buffer = m_device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, m_device->getCommandPool(), true);
         vkCmdBuildAccelerationStructuresKHR(
             command_buffer,
             1,
@@ -523,7 +523,7 @@ private:
 
         // Build the acceleration structure on the device via a one-time command buffer submission
         // Some implementations may support acceleration structure building on the host (VkPhysicalDeviceAccelerationStructureFeaturesKHR->accelerationStructureHostCommands), but we prefer device builds
-        VkCommandBuffer command_buffer = m_device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+        VkCommandBuffer command_buffer = m_device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, m_device->getCommandPool(), true);
         vkCmdBuildAccelerationStructuresKHR(
             command_buffer,
             1,
